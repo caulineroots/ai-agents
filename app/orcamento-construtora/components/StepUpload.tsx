@@ -13,9 +13,11 @@ export function StepUpload({
   const [groups,   setGroups]   = useState<PranchaGroup[]>([]);
   const [dragging, setDragging] = useState(false);
   const [error,    setError]    = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const addMoreRef = useRef<HTMLInputElement>(null);
 
-  const handleFiles = (incoming: FileList | File[]) => {
+  /** Substitui toda a seleção pelos arquivos recebidos. */
+  const handleReplace = (incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
     if (arr.length === 0) return;
     setError('');
@@ -27,10 +29,37 @@ export function StepUpload({
     setGroups(grouped);
   };
 
-  const handleConfirm = () => {
-    if (groups.length > 0) {
-      onDone(groups);
+  /** Mescla novos arquivos com os grupos já existentes.
+   *  - Mesmo stem: atualiza só os campos enviados (ex: adicionar PDF a um grupo que já tem PNG).
+   *  - Stem novo: adiciona como novo grupo.
+   */
+  const handleAddMore = (incoming: FileList | File[]) => {
+    const arr = Array.from(incoming);
+    if (arr.length === 0) return;
+    setError('');
+    const newGroups = groupFilesByStem(arr);
+    if (newGroups.length === 0) {
+      setError('Nenhum arquivo válido reconhecido (PNG, JPG, PDF, DXF, DWG).');
+      return;
     }
+    setGroups((prev) => {
+      const map = new Map<string, PranchaGroup>(prev.map((g) => [g.stem, { ...g }]));
+      for (const ng of newGroups) {
+        const existing = map.get(ng.stem);
+        if (existing) {
+          if (ng.imageFile) existing.imageFile = ng.imageFile;
+          if (ng.pdfFile)   existing.pdfFile   = ng.pdfFile;
+          if (ng.dxfFile)   existing.dxfFile   = ng.dxfFile;
+        } else {
+          map.set(ng.stem, ng);
+        }
+      }
+      return Array.from(map.values()).sort((a, b) => a.stem.localeCompare(b.stem));
+    });
+  };
+
+  const handleConfirm = () => {
+    if (groups.length > 0) onDone(groups);
   };
 
   const totalMB = groups.reduce((s, g) =>
@@ -52,16 +81,16 @@ export function StepUpload({
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files); }}
-          onClick={() => inputRef.current?.click()}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length > 0) handleReplace(e.dataTransfer.files); }}
+          onClick={() => replaceRef.current?.click()}
         >
           <span className="text-5xl">📂</span>
           <p className="text-sm text-gray-600 font-medium text-center">
             Arraste os arquivos aqui ou clique para selecionar
           </p>
           <p className="text-xs text-gray-400">PNG · JPG · PDF · DXF · DWG — múltiplos arquivos</p>
-          <input ref={inputRef} type="file" accept={ACCEPTED} multiple className="hidden"
-            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); }} />
+          <input ref={replaceRef} type="file" accept={ACCEPTED} multiple className="hidden"
+            onChange={(e) => { if (e.target.files?.length) handleReplace(e.target.files); e.target.value = ''; }} />
         </div>
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
       </div>
@@ -73,22 +102,51 @@ export function StepUpload({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Passo 1 — Upload das Pranchas</h2>
           <p className="text-sm text-gray-500 mt-0.5">
             {displayGroups.length} {displayGroups.length === 1 ? 'prancha agrupada' : 'pranchas agrupadas'}
-            {groups.length > 0 && ` · ${totalMB.toFixed(1)} MB total`}
+            {groups.length > 0 && ` · ${totalMB.toFixed(1)} MB`}
           </p>
         </div>
-        <div
-          className="flex items-center gap-2 text-sm cursor-pointer px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors"
-          onClick={() => inputRef.current?.click()}
-        >
-          Trocar arquivos
-          <input ref={inputRef} type="file" accept={ACCEPTED} multiple className="hidden"
-            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); }} />
+        <div className="flex items-center gap-2">
+          {/* Adicionar mais — mescla com os grupos existentes */}
+          <button
+            type="button"
+            onClick={() => addMoreRef.current?.click()}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
+          >
+            + Adicionar arquivos
+          </button>
+          <input ref={addMoreRef} type="file" accept={ACCEPTED} multiple className="hidden"
+            onChange={(e) => { if (e.target.files?.length) handleAddMore(e.target.files); e.target.value = ''; }} />
+
+          {/* Trocar tudo — substitui toda a seleção */}
+          <button
+            type="button"
+            onClick={() => replaceRef.current?.click()}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Trocar tudo
+          </button>
+          <input ref={replaceRef} type="file" accept={ACCEPTED} multiple className="hidden"
+            onChange={(e) => { if (e.target.files?.length) handleReplace(e.target.files); e.target.value = ''; }} />
         </div>
+      </div>
+
+      {/* Zona de drop — comporta-se como "adicionar" quando já há grupos */}
+      <div
+        className={`border-2 border-dashed rounded-xl px-4 py-3 flex items-center gap-2 cursor-pointer transition-colors text-sm ${
+          dragging ? 'border-blue-400 bg-blue-50 text-blue-600' : 'border-gray-200 text-gray-400 hover:border-gray-300'
+        }`}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length > 0) handleAddMore(e.dataTransfer.files); }}
+        onClick={() => addMoreRef.current?.click()}
+      >
+        <span className="text-base">📎</span>
+        <span>Arraste mais arquivos aqui para adicionar ao projeto</span>
       </div>
 
       {/* Tabela de grupos */}
