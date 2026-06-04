@@ -49,3 +49,6 @@ extractor_last_response.json
 # sessions / uploads (dados de runtime, não versionados)
 sessions/
 uploads/
+
+# dados pessoais / memória do agente
+brain/
