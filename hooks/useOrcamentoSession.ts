@@ -111,7 +111,7 @@ export function useOrcamentoSession() {
   useEffect(() => {
     if (!folha && !resultado && extractResults.length === 0) return;
     lsSave({ step, stems, extractResults, leituraMap, orchResult, folha, resultado, tokenLogs });
-  }, [step, stems, extractResults, leituraMap, folha, resultado, tokenLogs]);
+  }, [step, stems, extractResults, leituraMap, orchResult, folha, resultado, tokenLogs]);
 
   // Registra grupos no store externo e atualiza stems no state
   const setGroups = useCallback((groups: PranchaGroup[]) => {

@@ -40,6 +40,7 @@ Crie um arquivo `.env.local` na raiz do projeto:
 ```env
 ANTHROPIC_API_KEY=sk-ant-api03-...
 EXTRACTOR_SERVICE_URL=http://localhost:8000
+PROJECT_BASE_DIR=C:/caminho/para/pasta/de/projetos
 ```
 
 ---

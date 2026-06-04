@@ -87,7 +87,7 @@ function stemToAmbiente(stem: string): string {
 
 // ─── Helper: mapeia item bruto da IA → ItemOrcamento ─────────────────────────
 
-let _idCounter = 1;
+let _idCounter = Date.now(); // module-level seed avoids collisions across re-mounts
 
 function mapRawItem(raw: RawIAItem): ItemOrcamento {
   const VALID_CATS = new Set<Categoria>([
@@ -359,62 +359,65 @@ export function StepIA({
     setLeituraDone(false);
     setErro('');
 
-    // Garante que só processa grupos que têm imagem
-    const groupsComImagem = groups.filter((g) => g.imageFile);
-    const BATCH_SIZE = 6;
-    const batches: PranchaGroup[][] = [];
-    for (let i = 0; i < groupsComImagem.length; i += BATCH_SIZE) {
-      batches.push(groupsComImagem.slice(i, i + BATCH_SIZE));
-    }
-    setLeituraProgress({ done: 0, total: batches.length });
+    try {
+      // Garante que só processa grupos que têm imagem
+      const groupsComImagem = groups.filter((g) => g.imageFile);
+      const BATCH_SIZE = 6;
+      const batches: PranchaGroup[][] = [];
+      for (let i = 0; i < groupsComImagem.length; i += BATCH_SIZE) {
+        batches.push(groupsComImagem.slice(i, i + BATCH_SIZE));
+      }
+      setLeituraProgress({ done: 0, total: batches.length });
 
-    const allLeituras: PranchaLeitura[] = [];
+      const allLeituras: PranchaLeitura[] = [];
 
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batch = batches[bi];
-      const fd    = new FormData();
-      const batch_items: object[] = [];
+      for (let bi = 0; bi < batches.length; bi++) {
+        const batch = batches[bi];
+        const fd    = new FormData();
+        const batch_items: object[] = [];
 
-      for (let j = 0; j < batch.length; j++) {
-        const g  = batch[j];
-        const er = extractResults.find((r) => r.stem === g.stem);
-        if (g.imageFile) {
-          const compressed = await compressImageFile(g.imageFile);
-          fd.append(`image_${j}`, compressed, compressed.name);
+        for (let j = 0; j < batch.length; j++) {
+          const g  = batch[j];
+          const er = extractResults.find((r) => r.stem === g.stem);
+          if (g.imageFile) {
+            const compressed = await compressImageFile(g.imageFile);
+            fd.append(`image_${j}`, compressed, compressed.name);
+          }
+          batch_items.push({
+            stem:            g.stem,
+            itens_extraidos: er?.itens_extraidos ?? [],
+            classificacao:   er?.classificacao ?? 'IA_NECESSARIA',
+            height_context:  er?.height_context ?? {},
+          });
         }
-        batch_items.push({
-          stem:            g.stem,
-          itens_extraidos: er?.itens_extraidos ?? [],
-          classificacao:   er?.classificacao ?? 'IA_NECESSARIA',
-          height_context:  er?.height_context ?? {},
-        });
-      }
-      fd.append('context_json', JSON.stringify({ batch_items }));
+        fd.append('context_json', JSON.stringify({ batch_items }));
 
-      try {
-        const r    = await fetch('/api/orcamento-construtora/ler-prancha', { method: 'POST', body: fd });
-        const data = await r.json() as {
-          leituras?: Record<string, PranchaLeitura>;
-          metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
-          error?: string;
-        };
-        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-        addLog(`Leitura ${bi + 1}/${batches.length}`, data.metadata ?? {});
-        const novas = Object.values(data.leituras ?? {});
-        allLeituras.push(...novas);
-        setLeituraMap((prev) => [...prev, ...novas]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setErro((prev) => (prev ? prev + '\n' : '') + `Leitura batch ${bi + 1}: ${msg}`);
+        try {
+          const r    = await fetch('/api/orcamento-construtora/ler-prancha', { method: 'POST', body: fd });
+          const data = await r.json() as {
+            leituras?: Record<string, PranchaLeitura>;
+            metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+            error?: string;
+          };
+          if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+          addLog(`Leitura ${bi + 1}/${batches.length}`, data.metadata ?? {});
+          const novas = Object.values(data.leituras ?? {});
+          allLeituras.push(...novas);
+          setLeituraMap((prev) => [...prev, ...novas]);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setErro((prev) => (prev ? prev + '\n' : '') + `Leitura batch ${bi + 1}: ${msg}`);
+        }
+
+        setLeituraProgress((p) => ({ ...p, done: p.done + 1 }));
       }
 
-      setLeituraProgress((p) => ({ ...p, done: p.done + 1 }));
+      setLeituraDone(true);
+      console.log('[StepIA] Leitura Geral concluída:', allLeituras.length, 'pranchas lidas');
+    } finally {
+      setLeituraRunning(false);
+      runRef.current = false;
     }
-
-    setLeituraDone(true);
-    setLeituraRunning(false);
-    runRef.current = false;
-    console.log('[StepIA] Leitura Geral concluída:', allLeituras.length, 'pranchas lidas');
   }, [extractResults, groups, addLog]);
 
   // ── Estágio 2: Orquestrador ────────────────────────────────────────────────
@@ -470,6 +473,7 @@ export function StepIA({
     setErro('');
     setBatchResults([]);
 
+    try {
     const stemsParaDetalhar = orchResult.pranchas_para_detalhar.map((p) => p.stem);
 
     const BATCH_SIZE = 3;
@@ -624,8 +628,10 @@ export function StepIA({
     const folha = mergeFolhas(folhasPorPrancha.filter((f) => f.itens.length > 0));
     setFinalFolha(folha);
     setBatchDone(true);
-    setBatchRunning(false);
-    runRef.current = false;
+    } finally {
+      setBatchRunning(false);
+      runRef.current = false;
+    }
   }, [orchResult, groups, extractResults, leituraMap, addLog]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────

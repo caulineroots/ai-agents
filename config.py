@@ -28,10 +28,12 @@ _load_dotenv_local()
 
 # ─── Runtime config ───────────────────────────────────────────────────────────
 
-BASE_DIR = os.getenv(
-    "PROJECT_BASE_DIR",
-    r"C:\Users\AVELL\Downloads\Cauline Roots\Celmar\Projetos inicial\Projetos inicial",
-)
+BASE_DIR = os.getenv("PROJECT_BASE_DIR", "")
+if not BASE_DIR:
+    raise EnvironmentError(
+        "PROJECT_BASE_DIR não definido. "
+        "Crie um .env.local com: PROJECT_BASE_DIR=/caminho/para/projetos"
+    )
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODEL = "claude-sonnet-4-6"
 
