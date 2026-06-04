@@ -1,36 +1,138 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #0a0a0f;
-  --foreground: #ededed;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
 }
 
-@theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+  
+  html {
+    overscroll-behavior: none;
+    overscroll-behavior-x: none;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+  }
+  
+  /* Prevent page zoom while allowing canvas zoom */
+  html, body {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@keyframes slide-up {
+  from {
+    transform: translateY(100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  background: var(--background);
-  color: var(--foreground);
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
 }
 
-/* Páginas com tema claro (marmoraria, construtora) */
-.light-page {
-  background: #f9fafb !important;
-  color: #111827 !important;
+/* ═══════════════════════════════════════════════════════════════════════════
+   OFFER PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-a {
-  color: inherit;
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.next-button {
+  display: block;
+  width: 100%;
+  padding: 0.875rem;
+  background: #51824d;
+  color: white;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 12px rgba(81, 130, 77, 0.25);
+}
+
+.next-button:hover {
+  background: #7ca65b;
+  box-shadow: 0 0 40px rgba(81, 130, 77, 0.3);
+}
+
+.next-button:active {
+  transform: scale(0.98);
+}
+
+.whatsapp-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: white;
+  font-weight: 600;
+  font-size: 1.05rem;
+  border-radius: 0.875rem;
   text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.whatsapp-button:hover {
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.4);
+}
+
+.whatsapp-button:active {
+  transform: scale(0.98);
 }
