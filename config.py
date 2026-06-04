@@ -28,12 +28,9 @@ _load_dotenv_local()
 
 # ─── Runtime config ───────────────────────────────────────────────────────────
 
-BASE_DIR = os.getenv("PROJECT_BASE_DIR", "")
-if not BASE_DIR:
-    raise EnvironmentError(
-        "PROJECT_BASE_DIR não definido. "
-        "Crie um .env.local com: PROJECT_BASE_DIR=/caminho/para/projetos"
-    )
+# Usado apenas para salvar arquivos de debug (raw responses, resultados JSON).
+# Se não definido, usa a pasta do próprio projeto.
+BASE_DIR = os.getenv("PROJECT_BASE_DIR", str(Path(__file__).parent))
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODEL = "claude-sonnet-4-6"
 

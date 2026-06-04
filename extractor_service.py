@@ -112,8 +112,7 @@ async def extrair_codigo(
     pdf_data = _empty_pdf.copy()
     dxf_data = _empty_dxf.copy()
 
-    # ── Processar PDF — upload direto OU fallback em disco ───────────────────
-    pdf_path_disk = os.path.join(BASE_DIR, PDF_SUBDIR, stem + ".pdf")
+    # ── Processar PDF ─────────────────────────────────────────────────────────
     if pdf and pdf.filename:
         try:
             raw_pdf = await pdf.read()
@@ -122,25 +121,15 @@ async def extrair_codigo(
                 tmp_pdf = tf.name
             pdf_data = extract_pdf(tmp_pdf)
             os.unlink(tmp_pdf)
-            log.info("  PDF (upload) ok: %d tabelas, %d linhas medida",
+            log.info("  PDF ok: %d tabelas, %d linhas medida",
                      len(pdf_data["cea_qnt_tables"]), len(pdf_data["measure_lines"]))
         except Exception as e:
             erros.append(f"PDF: {e}")
-            log.warning("  Erro ao extrair PDF (upload): %s", e)
-    elif os.path.isfile(pdf_path_disk):
-        try:
-            pdf_data = extract_pdf(pdf_path_disk)
-            log.info("  PDF (disco) ok: %s | %d tabelas, %d linhas medida",
-                     pdf_path_disk, len(pdf_data["cea_qnt_tables"]), len(pdf_data["measure_lines"]))
-        except Exception as e:
-            erros.append(f"PDF disco: {e}")
-            log.warning("  Erro ao extrair PDF (disco): %s", e)
+            log.warning("  Erro ao extrair PDF: %s", e)
     else:
-        log.info("  PDF: nao enviado e nao encontrado em disco (%s)", pdf_path_disk)
+        log.info("  PDF: nao enviado")
 
-    # ── Processar DXF / DWG — upload direto OU fallback em disco ─────────────
-    dxf_path_disk = os.path.join(BASE_DIR, DXF_SUBDIR, stem + ".dxf")
-    dwg_path_disk = os.path.join(BASE_DIR, DXF_SUBDIR, stem + ".dwg")
+    # ── Processar DXF / DWG ───────────────────────────────────────────────────
     if dxf and dxf.filename:
         ext = Path(dxf.filename).suffix.lower()
         try:
@@ -150,27 +139,13 @@ async def extrair_codigo(
                 tmp_dxf = tf.name
             dxf_data = extract_dxf(tmp_dxf)
             os.unlink(tmp_dxf)
-            log.info("  DXF (upload) ok: %d layers, %d dims, %d textos",
+            log.info("  DXF ok: %d layers, %d dims, %d textos",
                      len(dxf_data["layers"]), len(dxf_data["dims"]), len(dxf_data["texts"]))
         except Exception as e:
             erros.append(f"DXF/DWG: {e}")
-            log.warning("  Erro ao extrair DXF/DWG (upload): %s", e)
-    elif os.path.isfile(dxf_path_disk):
-        try:
-            dxf_data = extract_dxf(dxf_path_disk)
-            log.info("  DXF (disco) ok: %s | %d dims", dxf_path_disk, len(dxf_data["dims"]))
-        except Exception as e:
-            erros.append(f"DXF disco: {e}")
-            log.warning("  Erro ao extrair DXF (disco): %s", e)
-    elif os.path.isfile(dwg_path_disk):
-        try:
-            dxf_data = extract_dxf(dwg_path_disk)
-            log.info("  DWG (disco) ok: %s | %d dims", dwg_path_disk, len(dxf_data["dims"]))
-        except Exception as e:
-            erros.append(f"DWG disco: {e}")
-            log.warning("  Erro ao extrair DWG (disco): %s", e)
+            log.warning("  Erro ao extrair DXF/DWG: %s", e)
     else:
-        log.info("  DXF/DWG: nao enviado e nao encontrado em disco")
+        log.info("  DXF/DWG: nao enviado")
 
     # ── Classificar e extrair itens ──────────────────────────────────────────
     classificacao = classify_prancha(pdf_data, dxf_data)

@@ -40,7 +40,6 @@ Crie um arquivo `.env.local` na raiz do projeto:
 ```env
 ANTHROPIC_API_KEY=sk-ant-api03-...
 EXTRACTOR_SERVICE_URL=http://localhost:8000
-PROJECT_BASE_DIR=C:/caminho/para/pasta/de/projetos
 ```
 
 ---
@@ -49,11 +48,13 @@ PROJECT_BASE_DIR=C:/caminho/para/pasta/de/projetos
 
 ### Passo 1 — Upload das Pranchas
 
-1. Arraste ou selecione os arquivos do projeto (PNG, PDF, DXF).
+1. Arraste ou selecione **todos** os arquivos do projeto: PNG, PDF e DXF/DWG.
 2. O sistema agrupa os arquivos por prancha (stem do nome).
-3. Clique em **Próximo**.
+3. Verifique na tabela se cada prancha tem PNG, PDF e DXF marcados.
+4. Clique em **Próximo**.
 
-> Dica: envie todos os arquivos de uma vez (PNG + PDF + DXF para cada prancha).
+> Os arquivos precisam ter o **mesmo nome base** para serem agrupados automaticamente.
+> Exemplo: `CEA-254-BLN-01.png`, `CEA-254-BLN-01.pdf` e `CEA-254-BLN-01.dxf` viram uma única prancha.
 
 ---
 
@@ -61,7 +62,7 @@ PROJECT_BASE_DIR=C:/caminho/para/pasta/de/projetos
 
 Clique em **Extrair por Código**.
 
-O sistema lê automaticamente:
+O sistema lê os arquivos que você enviou no Passo 1:
 - **PDF**: tabelas `CEA-QNT`, quadros de acabamentos, cotas de altura
 - **DXF**: blocos, layers e textos com keywords de material
 
