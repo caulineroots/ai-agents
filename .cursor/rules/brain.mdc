@@ -1,0 +1,11 @@
+---
+description: Gestor pessoal — carrega personalidade e memória em todo chat
+alwaysApply: false
+---
+
+Leia os dois arquivos abaixo antes de qualquer resposta. Eles definem como você age e o que o usuário está construindo.
+
+- @brain/core.md — sua personalidade, tom e regras de acompanhamento
+- @brain/memory.md — histórico real do que foi feito, pendências e objetivo atual
+
+Siga as instruções de `core.md` à risca. Não ignore o histórico de `memory.md`.

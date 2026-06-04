@@ -1,0 +1,997 @@
+{
+  "version": 1,
+  "last_updated": "2026-06-02",
+  "items": [
+    {
+      "id": "pintura-geral",
+      "canonical_name": "Pintura",
+      "category": "pintura",
+      "unit": "m2",
+      "price_key": "PINTURA",
+      "has_price": true,
+      "variations": [
+        "pintura látex",
+        "pintura acrílica",
+        "pintura pva",
+        "tinta",
+        "repintura",
+        "PINTURAS DE FORRO/PAREDES",
+        "PINTURA DE FORRO / LAJE",
+        "PINTURA DE PAREDE",
+        "PINTURA EM SERRALHERIA",
+        "Pintura esmalte cor Grafite em porta metálica - Mat. + M.O.",
+        "Pintura latex branco - Mat. + M.O. - acima do nível do forro",
+        "Pintura latex branco - Mat. + M.O. - áreas técnicas",
+        "Pintura latex branco neve fosco para laje - Mat. + M.O."
+      ]
+    },
+    {
+      "id": "ceramica",
+      "canonical_name": "Cerâmica",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "CERAMICA",
+      "has_price": true,
+      "variations": [
+        "piso cerâmico",
+        "revestimento cerâmico",
+        "azulejo",
+        "CERÂMICO 45X45cm REF. CARGO PLUS WHITE FABR. ELIANE + CONTRAPISO - 3cm",
+        "ERÂMICO 45X45cm REF. CARGO PLUS WHITE FABR. ELIANE + CONTRAPISO - 3cm"
+      ]
+    },
+    {
+      "id": "porcelanato",
+      "canonical_name": "Porcelanato",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "PORCELANATO",
+      "has_price": true,
+      "variations": [
+        "porcellanato",
+        "piso porcelanato",
+        "PISO ÁREA DE VENDAS",
+        "PISO DA ÁREA ADM/RESERVA",
+        "Porcelanato 1,20x0,60 - fornecido pela C&A",
+        "Assentamento de piso porcelanato",
+        "REVESTIMENTO DE PISO",
+        "BASE DE PISO"
+      ]
+    },
+    {
+      "id": "piso-vinilico",
+      "canonical_name": "Piso Vinílico",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "PISO_VINILICO",
+      "has_price": true,
+      "variations": [
+        "piso vinilic",
+        "piso vini",
+        "lvt",
+        "régua vinílica",
+        "régua vinilic",
+        "piso pvc",
+        "piso em régua",
+        "vinílico",
+        "vinilic",
+        "piso laminado vinílico"
+      ]
+    },
+    {
+      "id": "soleira",
+      "canonical_name": "Soleira",
+      "category": "revestimento",
+      "unit": "ml",
+      "price_key": "SOLEIRA",
+      "has_price": true,
+      "variations": [
+        "soleira de granito",
+        "soleira de mármore",
+        "soleira mármore"
+      ]
+    },
+    {
+      "id": "rodape",
+      "canonical_name": "Rodapé",
+      "category": "revestimento",
+      "unit": "ml",
+      "price_key": "RODAPE",
+      "has_price": true,
+      "variations": [
+        "soco",
+        "rodapé de mdf",
+        "rodapé em mdf",
+        "rodapé vinílico",
+        "rodapé de madeira",
+        "MADEIRA\nCURUPIXÁ OU\nTAUARI, COM\n7CM DE\nALTURA.",
+        "Rodapé MDP Branco",
+        "Rodapé Primer Tarket - 10 cm - SV",
+        "Rodapé em aço inox escovado 200mm",
+        "Rodateto / rodapé",
+        "rodapé/rodateto em mdf branco 10mm x 10,0cm",
+        "Rodapé de madeira h=20cm",
+        "Rodapé de madeira h=7cm",
+        "rodapé em mdf branco 10mm x 5,0cm - TARKET",
+        "Arremates de cantos / Cantoneira alumínio",
+        "Arremates de cantos / Cantoneira alumínio - Mat. + M.O.",
+        "Arremates gerais",
+        "Rodameio em madeira para sala de gerente - Mat. + M.O."
+      ]
+    },
+    {
+      "id": "piso-podotátil",
+      "canonical_name": "Piso Podotátil",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "PISO_PODATATIL",
+      "has_price": true,
+      "variations": [
+        "podotátil",
+        "piso podo tatil",
+        "piso tátil",
+        "faixa podotátil",
+        "faixa tátil",
+        "ESCADA: Piso tátil e fita antiderrapante",
+        "Piso tátil (escada rolante e escada fixa) - Mat. + M.O.",
+        "Fita antiderrapante Safety walk 50mm para entrada da loja"
+      ]
+    },
+    {
+      "id": "acm",
+      "canonical_name": "ACM",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "ACM",
+      "has_price": true,
+      "variations": [
+        "alucobond",
+        "painel acm",
+        "painel composto de alumínio",
+        "painel composto alumínio",
+        "alumínio composto",
+        "composite aluminium",
+        "Revestimento em ACM Branco Brilho",
+        "Revestimento para marquise",
+        "REVESTIMENTOS DE PAREDE",
+        "REVESTIMENTO DE PAREDE"
+      ]
+    },
+    {
+      "id": "impermeabilizacao",
+      "canonical_name": "Impermeabilização",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "IMPERM",
+      "has_price": true,
+      "variations": [
+        "manta impermeabilizante",
+        "manta asf",
+        "manta asfáltica",
+        "impermeabilizante",
+        "emborrachamento",
+        "IMPEAB/TELHADO/REV.EXT/CANTEIRO",
+        "Enchimento de Juntas de dilatação com vedaflex",
+        "TRATAMENTO DE JUNTA DE DILATAÇÃO"
+      ]
+    },
+    {
+      "id": "drywall",
+      "canonical_name": "Drywall",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "DRYWALL",
+      "has_price": true,
+      "variations": [
+        "gesso acartonado",
+        "parede de gesso",
+        "parede dry",
+        "parede em drywall",
+        "parede gesso acartonado",
+        "gesso cartonado",
+        "ADAPTAÇÃO E REFORMA DO PRÉDIO",
+        "ADAPTAÇÃO DE SHELL"
+      ]
+    },
+    {
+      "id": "gesso",
+      "canonical_name": "Gesso",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "GESSO",
+      "has_price": true,
+      "variations": [
+        "reboco de gesso",
+        "massa de gesso",
+        "aplicação de gesso",
+        "emboço gesso"
+      ]
+    },
+    {
+      "id": "alvenaria",
+      "canonical_name": "Alvenaria",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "ALVENARIA",
+      "has_price": true,
+      "variations": [
+        "parede de alvenaria",
+        "bloco de concreto",
+        "parede bloco",
+        "parede cerâmica",
+        "bloco cerâmico",
+        "tijolos",
+        "ALVENARIA (PARED.DIVISÓRIAS, ETC.)",
+        "Alvenaria em Bloco Celular",
+        "Alvenaria em bloco sical",
+        "Chapisco e emboço",
+        "Reforço em cedrinho para paredes",
+        "Enchimento de contrapiso (h=4cm)",
+        "Furação mecânica de lajes para Esgotos e tubulações.",
+        "CIVIL",
+        "PAREDES"
+      ]
+    },
+    {
+      "id": "forro",
+      "canonical_name": "Forro de Gesso",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "FORRO_GESSO",
+      "has_price": true,
+      "variations": [
+        "forro",
+        "forro gesso",
+        "forro drywall",
+        "forro seco",
+        "placa de gesso teto",
+        "forro acartonado",
+        "forro em gesso",
+        "FORRO ÁREA DE VENDAS",
+        "Demolição forro/sancas de gesso"
+      ]
+    },
+    {
+      "id": "divisoria",
+      "canonical_name": "Divisória",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "DIVISORIA",
+      "has_price": true,
+      "variations": [
+        "divisória eucatex",
+        "divisória naval",
+        "painel divisório",
+        "painel divisor",
+        "divisória drywall",
+        "DIVISÓRIAS",
+        "DIVIS DIVISÓRIAS",
+        "Portas de divisória 1,20m (dupla)",
+        "PAREDES E FORROS EM GESSO"
+      ]
+    },
+    {
+      "id": "guarda-corpo",
+      "canonical_name": "Guarda-Corpo",
+      "category": "civil",
+      "unit": "ml",
+      "price_key": "GUARDA_CORPO",
+      "has_price": true,
+      "variations": [
+        "guarda corpo",
+        "guardacorpo",
+        "parapeito",
+        "proteção lateral",
+        "corrimão e guarda-corpo",
+        "GUARDA CORPO EM INOX",
+        "Adequação de escada / mezanino / guarda corpo existente"
+      ]
+    },
+    {
+      "id": "corrimao",
+      "canonical_name": "Corrimão",
+      "category": "civil",
+      "unit": "ml",
+      "price_key": "CORRIMAO",
+      "has_price": true,
+      "variations": [
+        "corrimão de inox",
+        "corrimão de aço",
+        "corrimão metálico"
+      ]
+    },
+    {
+      "id": "montante",
+      "canonical_name": "Montante",
+      "category": "civil",
+      "unit": "un",
+      "price_key": "MONTANTE",
+      "has_price": false,
+      "variations": [
+        "montante de aço",
+        "montante metálico",
+        "perfil montante",
+        "estrutura montante"
+      ]
+    },
+    {
+      "id": "fechamento-cortina",
+      "canonical_name": "Fechamento Cortina",
+      "category": "marcenaria",
+      "unit": "m2",
+      "price_key": "FECHAMENTO_CORTINA",
+      "has_price": true,
+      "variations": [
+        "cortina de enrolar",
+        "cortina enrolar",
+        "porta enrolar",
+        "grade enrolar",
+        "portão enrolar"
+      ]
+    },
+    {
+      "id": "tablado",
+      "canonical_name": "Tablado",
+      "category": "marcenaria",
+      "unit": "m2",
+      "price_key": "TABLADO",
+      "has_price": true,
+      "variations": [
+        "tablado madeira",
+        "tablado de madeira",
+        "estrado",
+        "estrado de madeira",
+        "deck",
+        "piso elevado",
+        "Estrado com laminado branco para vitrine  - Mat. + M.O."
+      ]
+    },
+    {
+      "id": "painel-mdf",
+      "canonical_name": "Painel MDF",
+      "category": "marcenaria",
+      "unit": "m2",
+      "price_key": "PAINEL_MDF",
+      "has_price": true,
+      "variations": [
+        "painel em mdf",
+        "painel mdp",
+        "painel em mdp",
+        "painel em madeirite",
+        "painel em osb",
+        "painel revestido",
+        "painel laminado",
+        "painel melamínico",
+        "PAINÉIS E FERRAGENS",
+        "PAINÉIS FERRAGENS E ESPELHOS PROVADORES",
+        "Painel wall para mezanino - contratação direta C&A",
+        "coluna simples",
+        "frontal",
+        "lateral de provador branca",
+        "travessa",
+        "régua para união de painéis",
+        "R guas para união de painéis",
+        "Réguas para união de painéis - Mat. + M.O.",
+        "r gua para uni o de pain is",
+        "suporte \"l\" para lateral de provador",
+        "fixadores de teto",
+        "Fixadores de teto - Mat. + M.O.",
+        "cabideiro cromado (especificação em anexo)",
+        "Nichos lounge -",
+        "tubo em aço inox para provador deficiente 160,0cm",
+        "tubo em aço inox para provador deficiente 80,0cm",
+        "MARCENARIA E ENXOVAL",
+        "Marcenaria Pulpitre provador"
+      ]
+    },
+    {
+      "id": "porta",
+      "canonical_name": "Porta",
+      "category": "marcenaria",
+      "unit": "un",
+      "price_key": "PORTA",
+      "has_price": true,
+      "variations": [
+        "porta de madeira",
+        "porta mdf",
+        "porta laminada",
+        "porta de abrir",
+        "porta correr",
+        "porta de correr",
+        "porta pivotante",
+        "portão",
+        "porta camarão",
+        "PORTAS EM MADEIRA E ACESSÓRIOS",
+        "Porta de enrolar - fornecimento C&A",
+        "Porta corta-fogo - Docas",
+        "Porta de ferro - C. Máquina",
+        "Porta de ferro - Circulação",
+        "Porta de ferro - Gerador",
+        "Porta vai vem  ártico TX - Mat. + M.O.",
+        "Porta completa simples  ártico TX 1.00m - Mat. + M.O.",
+        "Porta completa simples ártico TX 0.80m  - Mat. + M.O.",
+        "Porta dupla 1.20m  ártico TX - Mat. + M.O.",
+        "Porta de correr provador",
+        "Porta de madeira Dupla casa de maquina",
+        "Portinhola branca para correio pneumático",
+        "Portinhola de alumínio sob bancada apenas na cantina",
+        "Passa documentos",
+        "Mola para porta - Mat. + M.O.",
+        "Prendedor de porta - Mat. + M.O.",
+        "Barra de apoio para porta - Mat. + M.O. - Sanitário PNE",
+        "Portas",
+        "porta provador PNE - com dobradiça, trinco e puxador",
+        "porta provador família - com dobradiça, trinco e puxador",
+        "Al açapão",
+        "Alçapão",
+        "Porta e Tampa de aluminio para lixeira copa",
+        "Porta e ferragens de Vidro ou Aluminio para Box chuveiro"
+      ]
+    },
+    {
+      "id": "armario",
+      "canonical_name": "Armário",
+      "category": "marcenaria",
+      "unit": "un",
+      "price_key": "ARMARIO",
+      "has_price": true,
+      "variations": [
+        "armário embutido",
+        "roupeiro",
+        "guarda-roupa",
+        "MARCENARIA E ENXOVAL - ESTOQUE E ADM",
+        "Armário boca de lobo - sala da gerência",
+        "Armário suspenso - refeitório",
+        "Armário suspenso e bancada - sala da gerência",
+        "Prateleira na circulação para caixa geral",
+        "Estante sala de rack",
+        "Montagem de estante modular metálica - fornecido pela C&A",
+        "Moldura para cofre - boca de lobo",
+        "Bancada/ armário da copa",
+        "Suporte para TV, Projetor e Microondas",
+        "RESERVAS E ADMINISTRATIVO",
+        "MOVEIS E EQUIPTOS AREA ADM.",
+        "Almoxarifado",
+        "ADMINISTRATIVO E RESERVAS"
+      ]
+    },
+    {
+      "id": "bancada",
+      "canonical_name": "Bancada",
+      "category": "marcenaria",
+      "unit": "ml",
+      "price_key": "BANCADA",
+      "has_price": true,
+      "variations": [
+        "bancada de granito",
+        "bancada de mármore",
+        "bancada em granito",
+        "bancada em mármore",
+        "balcão",
+        "counter",
+        "Bancadas em granito para vestiários - Mat. + M.O.",
+        "Aparadores para bancada de vestiários  - Mat. + M.O.",
+        "Superfície para troca de roupas"
+      ]
+    },
+    {
+      "id": "eletrica",
+      "canonical_name": "Instalação Elétrica",
+      "category": "eletrica",
+      "unit": "vb",
+      "price_key": "ELETRICA",
+      "has_price": true,
+      "variations": [
+        "elétrica",
+        "ponto elétrico",
+        "quadro elétrico",
+        "infraestrutura elétrica",
+        "LIGAÇÃO PROVISÓRIA INSTALAÇÕES ELETRICAS",
+        "GERADOR/ SUBESTAÇÃO",
+        "ELEVADOR E ESCADA ROLANTE",
+        "Prever reforço para: placas aéreas cv, trilho vitrine"
+      ]
+    },
+    {
+      "id": "luminaria",
+      "canonical_name": "Luminária",
+      "category": "eletrica",
+      "unit": "un",
+      "price_key": "LUMINARIA",
+      "has_price": true,
+      "variations": [
+        "spot",
+        "trilho de led",
+        "fita led",
+        "lâmpada",
+        "luminária led",
+        "downlight",
+        "plafon"
+      ]
+    },
+    {
+      "id": "antena",
+      "canonical_name": "Antena",
+      "category": "eletrica",
+      "unit": "un",
+      "price_key": "ANTENA",
+      "has_price": false,
+      "variations": [
+        "antena rfid",
+        "antena eas",
+        "detector"
+      ]
+    },
+    {
+      "id": "rfid",
+      "canonical_name": "RFID",
+      "category": "eletrica",
+      "unit": "m2",
+      "price_key": "RFID",
+      "has_price": true,
+      "variations": [
+        "eas",
+        "sistema rfid",
+        "antifurto",
+        "sistema eas",
+        "PROTECAO ELETROMAGNETICA EM MANTA ALUMINIZADA (RFID)",
+        "protecao rfid"
+      ]
+    },
+    {
+      "id": "hidraulica",
+      "canonical_name": "Instalação Hidráulica",
+      "category": "hidraulica",
+      "unit": "vb",
+      "price_key": "HIDRAULICA",
+      "has_price": true,
+      "variations": [
+        "hidráulica",
+        "encanamento",
+        "tubulação hidráulica",
+        "LOUÇAS E METAIS",
+        "Caixa para hidrantes",
+        "Caixa para hidrantes - Mat. + M.O.",
+        "Filtro para bebedouro Aqualar",
+        "Base de alumínio para bebedouro",
+        "Tubo aço inox 2\" para alimentação caixa - Mat. + M.O.",
+        "Tetra-chave - Mat. + M.O."
+      ]
+    },
+    {
+      "id": "esgoto",
+      "canonical_name": "Esgoto",
+      "category": "hidraulica",
+      "unit": "vb",
+      "price_key": "ESGOTO",
+      "has_price": false,
+      "variations": [
+        "rede de esgoto",
+        "tubulação esgoto",
+        "dreno",
+        "sifão"
+      ]
+    },
+    {
+      "id": "cuba",
+      "canonical_name": "Cuba",
+      "category": "hidraulica",
+      "unit": "un",
+      "price_key": "CUBA",
+      "has_price": true,
+      "variations": [
+        "cuba inox",
+        "cuba de embutir",
+        "pia",
+        "lavatório",
+        "Cuba de inox - copa"
+      ]
+    },
+    {
+      "id": "torneira",
+      "canonical_name": "Torneira",
+      "category": "hidraulica",
+      "unit": "un",
+      "price_key": "TORNEIRA",
+      "has_price": true,
+      "variations": [
+        "misturador",
+        "válvula",
+        "torneira sensor",
+        "torneira automática"
+      ]
+    },
+    {
+      "id": "vidro",
+      "canonical_name": "Vidro",
+      "category": "vidros",
+      "unit": "m2",
+      "price_key": "VIDRO",
+      "has_price": true,
+      "variations": [
+        "vidro temperado",
+        "blindex",
+        "vidro laminado",
+        "vitrine de vidro",
+        "painel de vidro",
+        "caixilho de vidro",
+        "VIDROS E ESPELHOS",
+        "ESQUADRIAS E VIDROS ÁREA ADM.",
+        "Vidro temperado hidrante c/ ferragens - Mat. + M.O.",
+        "Vidro blindex 10mm para guarda corpo - Mat. + M.O.",
+        "Visor back office com vidro",
+        "Visor gerência com vidro",
+        "Esquadria metálica c/ tela",
+        "ESQUADRIAS"
+      ]
+    },
+    {
+      "id": "espelho",
+      "canonical_name": "Espelho",
+      "category": "vidros",
+      "unit": "m2",
+      "price_key": "ESPELHO",
+      "has_price": true,
+      "variations": [
+        "espelho bisotê",
+        "espelho temperado",
+        "painel de espelho",
+        "Espelho 4mm incolor Guardian class - Mat. + M.O.",
+        "Espelho 4mm incolor Guardian class - corredor provador",
+        "Chassis para espelhos - cabine provador"
+      ]
+    },
+    {
+      "id": "climatizacao",
+      "canonical_name": "Climatização",
+      "category": "climatizacao",
+      "unit": "un",
+      "price_key": "AR_CONDICIONADO",
+      "has_price": false,
+      "variations": [
+        "ar condicionado",
+        "ar-condicionado",
+        "split",
+        "vrf",
+        "fancoil",
+        "mini split",
+        "condicionador de ar"
+      ]
+    },
+    {
+      "id": "granito",
+      "canonical_name": "Granito",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "GRANITO",
+      "has_price": true,
+      "variations": [
+        "granito polido",
+        "piso em granito",
+        "revestimento granito",
+        "tampo granito",
+        "Rodapé escada dos provadores em granito branco ceará",
+        "MARMORES E GRANITOS",
+        "Nicho em granito nos box de chuveiro - Mat. + M.O.",
+        "Soleira em granito - Mat. + M.O. (Branco Ceará)",
+        "Soleira em granito - Mat. + M.O. (Cinza Andorinha)",
+        "Sóculos granito frente vitrine (largura 10cm)",
+        "Sóculos para bancadas",
+        "Revestimento da Escada (Degrau e espelho) em Ardósia",
+        "ESCADA: Revestimento degrau em Ardósia"
+      ]
+    },
+    {
+      "id": "marmore",
+      "canonical_name": "Mármore",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "MARMORE",
+      "has_price": false,
+      "variations": [
+        "mármore polido",
+        "revestimento mármore"
+      ]
+    },
+    {
+      "id": "epoxi",
+      "canonical_name": "Piso Epóxi",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "EPOXI",
+      "has_price": true,
+      "variations": [
+        "epóxi",
+        "resina epóxi",
+        "pintura epóxi",
+        "PINTURA DE PISO",
+        "Epóxi sobre cimentado - Mat. + M.O. - áreas técnicas",
+        "Piso Cimentado para áreas técnicas com 5cm de espessura"
+      ]
+    },
+    {
+      "id": "fachada",
+      "canonical_name": "Fachada",
+      "category": "fachada",
+      "unit": "m2",
+      "price_key": "FACHADA",
+      "has_price": false,
+      "variations": [
+        "revestimento de fachada",
+        "painel fachada",
+        "FACHADAS",
+        "FACHADAS / ENTRADA LOJA / VITRIN",
+        "Estrutura metálica em metalon para revestimento de fachada"
+      ]
+    },
+    {
+      "id": "vitrine",
+      "canonical_name": "Vitrine",
+      "category": "fachada",
+      "unit": "m2",
+      "price_key": "VITRINE",
+      "has_price": false,
+      "variations": [
+        "vitrina",
+        "painel vitrine",
+        "frente de loja",
+        "Vitrines"
+      ]
+    },
+    {
+      "id": "laminado",
+      "canonical_name": "Laminado",
+      "category": "marcenaria",
+      "unit": "m2",
+      "price_key": "LAMINADO",
+      "has_price": true,
+      "variations": [
+        "laminado melamínico",
+        "fórmica",
+        "revestimento laminado",
+        "placa laminada",
+        "Revestimento em laminado",
+        "Revestimento em laminado - Mat. + M.O.",
+        "Painel 120cm laminado ártico TX - Mat. + M.O.",
+        "painel liso laminado branco",
+        "Rodapé em fórmica - Mat. + M.O.",
+        "Rodateto em fórmica - Mat. + M.O."
+      ]
+    },
+    {
+      "id": "estrutura-metalica",
+      "canonical_name": "Estrutura Metálica",
+      "category": "civil",
+      "unit": "kg",
+      "price_key": "ESTRUTURA_METAL",
+      "has_price": false,
+      "variations": [
+        "metalon",
+        "perfil metálico",
+        "aço estrutural",
+        "estrutura de aço",
+        "viga metálica",
+        "ESCADAS/ESTRUTURAS METÁLICAS AUX",
+        "ESTRUTURA AUXILIAR",
+        "Adequação estrutural para elevador",
+        "Adequação estrutural para escada rolante",
+        "Gradil metálico para isolamento",
+        "Estrutura metálica auxiliar para porta de enrolar",
+        "Perfil em aço inox escovado para caixilho dos vidros 150mm",
+        "Laje pré-moldada com capa de concreto",
+        "LAJE PARA SUBESTAÇÃO",
+        "Escada metálica - contratação direta C&A",
+        "Mezanino metálico - contratação direta C&A"
+      ]
+    },
+    {
+      "id": "tapume",
+      "canonical_name": "Tapume",
+      "category": "civil",
+      "unit": "m2",
+      "price_key": "TAPUME",
+      "has_price": true,
+      "variations": [
+        "tapume de obra",
+        "proteção de obra",
+        "cerca de obra",
+        "Lona proteção - piso, marcenaria, equipamentos em geral",
+        "Lona transparente proteção equipamentos",
+        "Fornecimento e colocação de tela Telcon e Lona preta"
+      ]
+    },
+    {
+      "id": "grama-sintetica",
+      "canonical_name": "Grama Sintética",
+      "category": "revestimento",
+      "unit": "m2",
+      "price_key": "GRAMA_SINTETICA",
+      "has_price": false,
+      "variations": [
+        "Grama sintetica - sala descompressao"
+      ]
+    },
+    {
+      "id": "levantamento-topografico",
+      "canonical_name": "Levantamento Topográfico",
+      "category": "civil",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "Topografia (5 visitas)"
+      ],
+      "price_key": "LEVANTAMENTO_TOPOGRAFICO"
+    },
+    {
+      "id": "demolicao",
+      "canonical_name": "Demolições e Retiradas",
+      "category": "civil",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "Demolições e retiradas - incluir bota-fora",
+        "Demolição",
+        "Demolicão forro/sancas"
+      ],
+      "price_key": "DEMOLICAO"
+    },
+    {
+      "id": "limpeza-obra",
+      "canonical_name": "Limpeza de Obra",
+      "category": "outro",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "Limpeza Final de obra",
+        "Limpeza permanente da obra (2 operários)",
+        "Serviços de Limpeza e Administração de Obra",
+        "Material de limpeza e administrativo (Xerox e Plotagens)"
+      ],
+      "price_key": "LIMPEZA_OBRA"
+    },
+    {
+      "id": "administracao-obra",
+      "canonical_name": "Administração de Obra",
+      "category": "outro",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "ADMINISTRAÇÃO, MOBILIZAÇÃO E LIMPEZA DA OBRA",
+        "Mobilização e desmobilização",
+        "Loca ão de equipamentos manuais",
+        "Locação de equipamentos manuais",
+        "Transporte vertical e horizontal",
+        "Estadias e refeições",
+        "SERVICOS GERAIS (CÓPIAS, ETC.)",
+        "Seguro de obra com responsabilidade civil.",
+        "Extintores para a Obra e Bebedouro para funcionários",
+        "ART contemplando todos os serviços + placa de obra",
+        "Adicional Noturno",
+        "Homem/Hora",
+        "Hora Normal",
+        "Hora 60%",
+        "Hora 100%",
+        "Carpinteiro",
+        "Pedreiro",
+        "Servente",
+        "Encarregado",
+        "Mestre",
+        "Engenheiro",
+        "Engenheiro residente - full time",
+        "Tecnico de seguranca - full time"
+      ],
+      "price_key": "ADMINISTRACAO_OBRA"
+    },
+    {
+      "id": "bdi",
+      "canonical_name": "BDI / Impostos",
+      "category": "outro",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "BDI",
+        "b.d.i.",
+        "Taxa de ADM",
+        "imposto",
+        "Serviços Gerais"
+      ],
+      "price_key": "BDI"
+    },
+    {
+      "id": "locker",
+      "canonical_name": "Locker / Vestiário",
+      "category": "marcenaria",
+      "unit": "un",
+      "has_price": false,
+      "variations": [
+        "Locker para vestiário",
+        "Sapateira para vestiário",
+        "Banco para vestiário",
+        "Lixeira para bancada da cantina",
+        "Lixeira para bancada dos sanitários",
+        "Lixeira para vasos sanitários"
+      ],
+      "price_key": "LOCKER"
+    },
+    {
+      "id": "mezanino",
+      "canonical_name": "Mezanino",
+      "category": "civil",
+      "unit": "m2",
+      "has_price": false,
+      "variations": [
+        "MEZANINOS COM ESCADA DE ACESSO",
+        "MEZANINO E ESCADA"
+      ],
+      "price_key": "MEZANINO"
+    },
+    {
+      "id": "capacho",
+      "canonical_name": "Capacho",
+      "category": "outro",
+      "unit": "un",
+      "has_price": false,
+      "variations": [
+        "Capacho nômade 3M cinza grafite - Mat. + M.O.",
+        "Capacho nômade 3M"
+      ],
+      "price_key": "CAPACHO"
+    },
+    {
+      "id": "area-tecnica",
+      "canonical_name": "Área Técnica",
+      "category": "civil",
+      "unit": "m2",
+      "has_price": false,
+      "variations": [
+        "Execução área técnica",
+        "SALA AR COND. E CASA MÁQ. E LAJE TÉCNICA"
+      ],
+      "price_key": "AREA_TECNICA"
+    },
+    {
+      "id": "arquibancada",
+      "canonical_name": "Arquibancada",
+      "category": "marcenaria",
+      "unit": "m2",
+      "has_price": false,
+      "variations": [],
+      "price_key": "ARQUIBANCADA"
+    },
+    {
+      "id": "contrapiso",
+      "canonical_name": "Contrapiso",
+      "category": "civil",
+      "unit": "m2",
+      "has_price": false,
+      "variations": [
+        "Enchimento de contrapiso"
+      ],
+      "price_key": "CONTRAPISO"
+    },
+    {
+      "id": "serralheria",
+      "canonical_name": "Serralheria",
+      "category": "civil",
+      "unit": "vb",
+      "has_price": false,
+      "variations": [
+        "Tubo aço inox 2\"",
+        "APOIO PARA INSTALAÇÕES"
+      ],
+      "price_key": "SERRALHERIA"
+    },
+    {
+      "id": "provador",
+      "canonical_name": "Provadores",
+      "category": "marcenaria",
+      "unit": "un",
+      "has_price": false,
+      "variations": [
+        "Provador PNE",
+        "provador"
+      ],
+      "price_key": "PROVADOR"
+    }
+  ]
+}

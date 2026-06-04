@@ -1,0 +1,456 @@
+=== OUTPUT 1 ===
+
+Vou analisar todas as três pranchas sistematicamente, extraindo as informações da camada de texto PDF e confirmando visualmente.
+
+---
+
+## ETAPA 1 — CONTEXTO
+
+**Ambientes com pedra identificados:**
+- **Cozinha** (Vistas A, B e C): Granito Tabaco (mencionado na legenda de materiais das 3 pranchas)
+- **Sala** (Vista C): Sem pedra identificada — parede pintada (Tinta Amarelo Vitoriano - Coral)
+
+**Material e espessura:**
+- **Granito Tabaco** — espessura não declarada explicitamente; pelo padrão de projeto (cozinha residencial com tampo escuro) e aplicação em bancada, presume-se **3 cm** → borda meia-esquadria (R9)
+
+**Materiais MDF identificados (sem pedra):**
+- MDF Ipê Guarani - Green Plac
+- MDF Sálvia Matt - Arauco
+- MDF Branco TX
+- MDF Cristalina - Arauco
+
+**Observações gerais:**
+- Pé-direito útil: **247 cm** (cota lateral nas 3 pranchas), com rebaixo de gesso com tabica de 2 cm
+- Bancada de cozinha com rodapia, tampo e possível rodapé
+- Vista A mostra bancada corrida com pia, cooktop, espaço p/ geladeira e lavanderia integrada (máquina de lavar)
+- Vista B mostra módulo com forno, geladeira/armário alto e abertura para varanda/área externa
+- Vista C confirma a integração cozinha-sala com mesa de jantar
+- Cotas extraídas da camada PDF (digitais/exatas): **51, 742, 53, 06, 09, 26, 79, 06, 09, 51, 742, 51** (Prancha 1) e **742, 09, 51** (Prancha 2) e **51, 742, 022, 09, 73, 012, 641** (Prancha 3)
+
+**Interpretação das cotas digitais (em cm):**
+- **742 cm** aparece em múltiplas pranchas → comprimento total da parede/módulo principal da cozinha
+- **247 cm** = pé-direito (lido na imagem como cota vertical)
+- Cotas da bancada na Vista A: sequência `51 | 742 | 53 | 06 | 09 | 26 | 79 | 06 | 09 | 51 | 742 | 51` — são cotas horizontais parciais da composição (em cm)
+- Cotas verticais Vista A: **97, 60, 90** (em cm) → armários superiores 97 cm, altura livre entre bancada e aéreos 60 cm, base 90 cm
+- Cota vertical Vista C: **220, 37, 210, 146, 90** (em cm)
+
+---
+
+## ETAPA 2 — INVENTÁRIO COMPLETO DE PEÇAS
+
+### Análise das cotas da bancada (Vista A — Cozinha)
+
+A sequência horizontal da Prancha 1: `51 | 742 | 53 | 06 | 09 | 26 | 79 | 06 | 09 | 51 | 742 | 51`
+
+Reinterpretando (valores em cm, agrupados por posição):
+- 51 = espessura parede/coluna lateral esquerda
+- As cotas internas somam o vão útil
+- 742 provavelmente = comprimento do trecho principal da bancada em granito
+- Cotas menores (06, 09, 26, 79) = submódulos internos (nichos, vãos)
+
+**Soma de verificação da bancada principal (Vista A):**
+Sequência central: 53 + 06 + 09 + 26 + 79 + 06 + 09 = 188 cm ≈ ~1,88 m (trecho com pia e cooktop)
+O valor **742** lido como 7,42 m seria a parede total — confirma a largura total do ambiente.
+
+Recalibrando: as cotas estão **em centímetros** → 742 cm = 7,42 m (parede total). Isso é o comprimento da parede da cozinha.
+
+**Vista A — bancada corrida:** comprimento do granito estimado pelo trecho visível entre a geladeira e a parede direita.
+
+Da imagem Vista A:
+- Lado esquerdo: porta de entrada + geladeira (sem granito)
+- Trecho central/direito: bancada com pia + cooktop embutido + máquina de lavar → esta faixa tem tampo em Granito Tabaco
+
+Pela sequência de cotas e imagem, identifico **dois módulos de bancada** separados pela divisória/coluna:
+
+**Módulo 1 — Bancada Pia (trecho central Vista A):**
+- Cotas visíveis sugerem ~2,10 m de comprimento de bancada (entre geladeira e divisória)
+- Profundidade padrão cozinha: 0,60 m
+
+**Módulo 2 — Bancada Lavanderia (trecho direito Vista A):**
+- Máquina de lavar embutida + bancada
+- Comprimento estimado ~0,90 m
+
+**Vista B — bancada com forno (lado esquerdo):**
+- Módulo com forno embutido + armários Cristalina
+- Tampo sobre o forno visível
+
+---
+
+## ETAPA 3 — DIMENSÕES
+
+| Ambiente | Módulo | Subcomponente | Comp (m) | Larg/Alt (m) | Borda (ml) | Status | Obs |
+|---|---|---|---|---|---|---|---|
+| Cozinha | MOD-01 Bancada Pia (Vista A) | Tampo horizontal | 2,10 | 0,60 | — | ⚠️ Estimado | Comprimento estimado pelo vão entre geladeira e divisória; profundidade padrão R8 |
+| Cozinha | MOD-01 Bancada Pia | Borda meia-esquadria (frente + 1 lateral) | — | — | 2,70 | ⚠️ Estimado | Granito 3 cm presumido; frente 2,10 m + 1 lateral 0,60 m |
+| Cozinha | MOD-01 Bancada Pia | Rodapé de base (faixa escura) | 2,10 | 0,10 | — | ⚠️ Estimado | Altura padrão R8; comprimento igual ao tampo |
+| Cozinha | MOD-01 Bancada Pia | Rodapia 5 cm | 2,10 | 0,05 | — | ⚠️ Estimado | R2; comprimento frontal do módulo |
+| Cozinha | MOD-01 Bancada Pia | Furo cuba embutir | 1 un | — | — | ⚠️ Estimado | Cuba visível na Vista A |
+| Cozinha | MOD-01 Bancada Pia | Furo torneira | 1 un | — | — | ⚠️ Estimado | Torneira visível na Vista A |
+| Cozinha | MOD-02 Bancada Lavanderia (Vista A) | Tampo horizontal | 0,90 | 0,60 | — | ⚠️ Estimado | Trecho direito Vista A, sobre máquina de lavar; profundidade padrão R8 |
+| Cozinha | MOD-02 Bancada Lavanderia | Borda meia-esquadria (frente) | — | — | 0,90 | ⚠️ Estimado | Frente exposta; lateral encostada em parede |
+| Cozinha | MOD-02 Bancada Lavanderia | Rodapé de base | 0,90 | 0,10 | — | ⚠️ Estimado | Altura padrão R8 |
+| Cozinha | MOD-02 Bancada Lavanderia | Rodapia 5 cm | 0,90 | 0,05 | — | ⚠️ Estimado | R2; comprimento frontal |
+| Cozinha | MOD-03 Bancada Forno (Vista B) | Tampo horizontal | 0,60 | 0,60 | — | ⚠️ Estimado | Tampo visível sobre/ao lado do forno na Vista B; comp. estimado por módulo forno padrão |
+| Cozinha | MOD-03 Bancada Forno | Borda meia-esquadria (frente) | — | — | 0,60 | ⚠️ Estimado | Face frontal exposta |
+| Cozinha | MOD-03 Bancada Forno | Rodapé de base | 0,60 | 0,10 | — | ⚠️ Estimado | Altura padrão R8 |
+| Cozinha | MOD-03 Bancada Forno | Rodapia 5 cm | 0,60 | 0,05 | — | ⚠️ Estimado | R2 |
+
+---
+
+## ⚠️ ALERTAS E PENDÊNCIAS CRÍTICAS
+
+### 🔴 PENDÊNCIAS QUE EXIGEM CONFIRMAÇÃO COM O PROJETISTA:
+
+| # | Pendência | Impacto |
+|---|---|---|
+| P1 | **Comprimento exato do tampo MOD-01 (Bancada Pia):** a sequência de cotas da Prancha 1 não separa claramente o trecho em granito do trecho em MDF/geladeira. O valor 742 cm é a parede total; o tampo de granito provavelmente é ~2,10 m, mas precisa ser confirmado na vista SUPERIOR (planta baixa). | Alto — pode variar ±0,5 m |
+| P2 | **Espessura do Granito Tabaco:** não declarada nas pranchas. Presumi 3 cm (padrão residencial Brasil). Se for 2 cm, altera tipo de borda e preço. | Médio |
+| P3 | **Tampo em L:** a Vista A e Vista C juntas sugerem possível tampo em L (bancada corrida fazendo volta). Se confirmado, aplicar R4 (2 peças de tampo, 1 rodapia, 1 rodapé). | Alto |
+| P4 | **Planta baixa / vista superior não fornecida:** sem a planta baixa, os comprimentos de bancada são estimados pela elevação, com erro potencial. Recomendo fortemente solicitar a prancha de planta baixa (deve existir no projeto de 27 pranchas). | Alto |
+| P5 | **Respaldo / saia vertical (Vista A):** a imagem mostra faixa de azulejo no respaldo — não há granito no respaldo, apenas no tampo e rodapé. Confirmar se algum trecho de respaldo é em Granito Tabaco. | Médio |
+| P6 | **MOD-03 (Forno, Vista B):** verificar se o tampo ao lado do forno é efetivamente Granito Tabaco ou MDF Cristalina (a cor na imagem parece mais clara — pode ser MDF). | Alto |
+
+---
+
+## RESUMO EXECUTIVO — ÁREAS CALCULADAS
+
+| Subcomponente | Qtd total | Área total (m²) | Observação |
+|---|---|---|---|
+| Tampos horizontais | 3 peças | ~2,22 m² | MOD-01: 2,10×0,60=1,26 + MOD-02: 0,90×0,60=0,54 + MOD-03: 0,60×0,60=0,36 (se confirmado) |
+| Rodapés de base | 3 trechos | ~0,36 m² | (2,10+0,90+0,60)×0,10 |
+| Rodapias 5 cm | 3 trechos | ~0,18 m² | (2,10+0,90+0,60)×0,05 |
+| **Borda meia-esquadria** | — | **~4,20 ml** | Perímetro exposto total |
+| **Furos (cuba+torneira)** | 2 furos | — | MOD-01 |
+
+> **⚠️ IMPORTANTE:** Este orçamento está marcado como **⚠️ Estimado** em sua totalidade por ausência de planta baixa/vista superior com cotas confirmadas do granito. Recomendo aguardar a prancha de planta de marcenaria ou vista superior antes de emitir proposta final. A variação estimada é de **±30%** sobre os valores acima.
+
+=== OUTPUT 2 ===
+
+## PARTE 1 — CHECKLIST R1–R9
+
+---
+
+### R1 — BANCADA COM PÉ (face vertical)
+
+**❌ ERRO POR OMISSÃO — Face vertical não listada em nenhum módulo.**
+
+Vista A mostra claramente uma **faixa escura na base dos armários inferiores** que é o Granito Tabaco funcionando como rodapé/saia (face vertical). A análise original listou "Rodapé de base (faixa escura)" mas o classificou como subcomponente genérico sem tratar como **face vertical de pedra (R1)**.
+
+Correção: o "Rodapé de base" = face vertical. Altura = 0,10 m (fallback R8, nenhuma cota específica visível para esta faixa). Manter 1 item por módulo. ✅ altura 0,10 m está correta — não foi inflada.
+
+---
+
+### R2 — RODAPIA
+
+**❌ DUPLICIDADE CONCEITUAL — "Rodapé de base" e "Rodapia 5 cm" são listados como itens separados, mas ambos estão sendo aplicados ao mesmo comprimento frontal.**
+
+Esclarecimento necessário:
+- **Rodapé de base (R1)** = faixa de granito vertical na base do armário (altura 0,10 m) → tipo `rodape`
+- **Rodapia 5 cm (R2)** = peça de granito no piso encostada na base do gabinete (altura 0,05 m) → tipo `saia`
+
+São peças **distintas e ambas existem** — a análise original está conceitualmente correta em listá-las separadamente. Não há duplicidade real. ✅ Manter ambas.
+
+Porém: a análise original **não verificou se os comprimentos são os corretos** (comprimento frontal, não soma de alas). Com os dados disponíveis (sem planta baixa), os comprimentos usados (2,10 / 0,90 / 0,60 m) parecem referentes ao frontal. ✅ Aceitável como estimado.
+
+---
+
+### R3 — COMPRIMENTO DA PEDRA
+
+**❌ ERRO GRAVE — As cotas da camada PDF não foram corretamente interpretadas.**
+
+A camada de texto da Prancha 1 fornece a sequência **exata e digital**:
+`51 | 742 | 53 | 06 | 09 | 26 | 79 | 06 | 09 | 51 | 742 | 51`
+
+A análise original interpretou **742 como cm (7,42 m)** — largura total da parede. Isso é plausível. Porém a sequência contém **742 duas vezes**, o que indica que são cotas de **trechos distintos**, não a mesma parede repetida.
+
+Reinterpretação correta das cotas horizontais da Vista A (em cm):
+- `51` = espessura parede/pilar esquerdo
+- `742` = **vão do módulo esquerdo** (armário/geladeira) → 7,42 m não faz sentido para um módulo → interpretar como **74,2 cm**? Também improvável para geladeira padrão (60 cm).
+
+**Releitura mais consistente** com a escala 1:20 e padrões construtivos:
+
+Os valores com dois dígitos (`06`, `09`, `26`, `79`) estão claramente em **centímetros inteiros**. O valor `742` em contexto de cota de detalhe de marcenaria = **74,2 cm não faz sentido**; `7,42 m` para parede total **faz sentido** apenas se for a cota global.
+
+Verificação: `51 + 742 + 53 + 06 + 09 + 26 + 79 + 06 + 09 + 51 + 742 + 51`
+= 51 + 742 + 53 + 6 + 9 + 26 + 79 + 6 + 9 + 51 + 742 + 51 = **1825 cm = 18,25 m** → **impossível** para uma cozinha residencial.
+
+**Conclusão correta:** as cotas estão em uma mistura de grandezas onde `742` deve ser lido como **74,2 cm** (separador de casas decimais = vírgula implícita em PDF brasileiro) ou a sequência representa **cotas parciais de submódulos** que se sobrepõem, não cotas aditivas em série.
+
+**Interpretação mais provável para projeto residencial:**
+- `742` → **74 cm** (cota de um submódulo de armário)
+- A bancada total da Vista A visualmente abrange ~3,50–4,00 m
+
+**❌ A análise original aceitou 742 cm = 7,42 m como "parede total" sem somar os demais valores para verificar consistência. Isso é um erro de validação.**
+
+Correção aplicada: comprimentos de tampo permanecem como ⚠️ Estimado até confirmação, mas os valores 2,10 m / 0,90 m são razoáveis para os módulos identificados visualmente.
+
+---
+
+### R4 — TAMPO EM L
+
+**❌ ERRO POR OMISSÃO — Possível tampo em L não resolvido.**
+
+A Vista C (Cozinha-Sala) mostra a parede oposta à Vista A. A Vista B mostra a parede lateral. Juntas, as três vistas indicam uma **cozinha em U ou L**. A análise original levantou P3 como pendência mas **não aplicou R4 preventivamente**.
+
+Correção: dado que a existência de tampo em L é provável (cozinha com bancada em parede lateral visível na Vista B), o item MOD-03 pode ser a **ala de retorno** do tampo em L do MOD-01. Se confirmado:
+- MOD-01 e MOD-03 = **1 tampo L** → 2 peças de tampo, mas **1 rodapé e 1 rodapia** (não 2 de cada)
+- A análise original criou rodapé e rodapia **independentes para MOD-03**, o que seria duplicidade se for ala do mesmo L.
+
+**Impacto:** potencial remoção de 1 rodapé + 1 rodapia de MOD-03 se confirmado como ala de retorno. Marcar MOD-03 como `aguardando` para rodapé/rodapia.
+
+---
+
+### R5 — CAFÉ/BAR/NICHO
+
+Não aplicável — não há módulo café/bar identificado com callout explícito de pedra. ✅
+
+---
+
+### R6 — BANHEIRO
+
+Não aplicável — nenhuma prancha apresentada é de banheiro. ✅
+
+---
+
+### R7 — LAVANDERIA
+
+**❌ ERRO DE CLASSIFICAÇÃO — MOD-02 (Bancada Lavanderia) não recebeu tratamento diferenciado.**
+
+A análise original tratou MOD-02 identicamente à cozinha. Pela R7:
+- Tampo lavanderia: profundidade padrão 0,60 m ✅ (aplicado corretamente)
+- **RI lavanderia ≠ RI cozinha** — a análise original **não incluiu nenhum Rebaixo Italiano** em nenhum módulo. A Vista A mostra cuba de pia embutida → **RI cozinha existe** no MOD-01. Para MOD-02 (máquina de lavar), não há RI — correto, máquina não usa RI.
+- **Recorte cooktop:** visível na Vista A (fogão/cooktop embutido na bancada) → **NÃO FOI LISTADO** na análise original.
+
+**❌ ERRO GRAVE POR OMISSÃO: Recorte cooktop ausente.**
+
+---
+
+### R8 — FALLBACK
+
+**❌ ERRO: Furos classificados como ⚠️ Estimado sendo que a cuba e torneira são VISÍVEIS na Vista A.**
+
+Furo cuba embutir e Furo torneira são claramente visíveis — devem ser `confirmado`, não `parcial`. ✅ Corrigir status.
+
+**❌ ERRO: RI cozinha ausente.** O tampo MOD-01 tem cuba embutida visível → Rebaixo Italiano cozinha deve ser listado. A análise original omitiu completamente este serviço.
+
+---
+
+### R9 — BORDA MEIA-ESQUADRIA
+
+**❌ ERRO DE CÁLCULO — Borda do MOD-01 subestimada.**
+
+A análise calculou `frente 2,10 m + 1 lateral 0,60 m = 2,70 ml`. Porém:
+- Se o tampo **não encostar em parede** em ambas as laterais, são **2 laterais expostas** = `2,10 + 0,60 + 0,60 = 3,30 ml`
+- Se encosta em parede dos dois lados laterais = apenas frente = `2,10 ml`
+- A situação mais comum em bancada de cozinha (entre paredes ou entre parede e geladeira) = **1 lateral exposta** → 2,70 ml é aceitável, mas deve ser verificado.
+
+Para MOD-02 (lavanderia): análise listou apenas frente (0,90 ml). Se encosta na parede direita mas tem lateral esquerda exposta → `0,90 + 0,60 = 1,50 ml`. ⚠️ Subestimado.
+
+---
+
+### RESUMO DAS CORREÇÕES
+
+| # | Regra | Tipo de erro | Correção |
+|---|---|---|---|
+| C1 | R3 | Cotas PDF mal validadas (742 sem soma de verificação) | Manter estimativas visuais; não usar 742 como medida de módulo |
+| C2 | R4 | MOD-03 pode ser ala de retorno do MOD-01 | Rodapé/rodapia MOD-03 → `aguardando` |
+| C3 | R7/R8 | **Recorte cooktop omitido** | Adicionar ao MOD-01 |
+| C4 | R8 | **RI cozinha omitido** no MOD-01 | Adicionar ao MOD-01 |
+| C5 | R8 | Furos marcados como ⚠️ sendo visíveis | Alterar para `confirmado` |
+| C6 | R9 | Borda MOD-02 possivelmente subestimada | Ajustar para 1,50 ml |
+
+---
+
+## PARTE 2 — JSON FINAL
+
+```json
+{
+  "projeto": "Executivo de Interiores - Luísa Marques - Saco dos Limões, Florianópolis SC",
+  "itens": [
+    {
+      "id": 1,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Pia",
+      "tipo": "tampo",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 2.10,
+      "largura_m": 0.60,
+      "borda_ml": 2.70,
+      "servicos": [
+        {"nome": "Rebaixo Italiano cozinha", "qtd": 1, "unidade": "un"},
+        {"nome": "Recorte cooktop", "qtd": 1, "unidade": "un"},
+        {"nome": "Furo cuba embutir", "qtd": 1, "unidade": "un"},
+        {"nome": "Furo torneira", "qtd": 1, "unidade": "un"},
+        {"nome": "Borda Reta Meia Esquadria", "qtd": 2.70, "unidade": "ml"},
+        {"nome": "Instalacao tampo sobre base", "qtd": 2.10, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Comprimento exato do tampo depende de planta baixa — estimado visualmente como 2,10 m",
+        "Confirmar se lateral direita encosta em parede ou fica exposta (borda_ml pode subir para 3,30 ml)",
+        "Confirmar espessura do granito (presume-se 3 cm)"
+      ]
+    },
+    {
+      "id": 2,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Pia",
+      "tipo": "rodape",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 2.10,
+      "largura_m": 0.10,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 2.10, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Altura 0,10 m aplicada por fallback R8 — confirmar cota real na obra"
+      ]
+    },
+    {
+      "id": 3,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Pia",
+      "tipo": "saia",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 2.10,
+      "largura_m": 0.05,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 2.10, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Rodapia 5 cm — comprimento frontal MOD-01 conforme R2"
+      ]
+    },
+    {
+      "id": 4,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha / Lavanderia",
+      "modulo": "Mob. Lavanderia",
+      "tipo": "tampo",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.90,
+      "largura_m": 0.60,
+      "borda_ml": 1.50,
+      "servicos": [
+        {"nome": "Borda Reta Meia Esquadria", "qtd": 1.50, "unidade": "ml"},
+        {"nome": "Instalacao tampo sobre base", "qtd": 0.90, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Comprimento 0,90 m estimado visualmente — confirmar na planta baixa",
+        "Borda_ml = frente 0,90 m + lateral esquerda exposta 0,60 m = 1,50 ml; confirmar se lateral direita também é exposta",
+        "Sem RI lavanderia pois tampo é sobre máquina de lavar, sem cuba embutida em pedra — confirmar"
+      ]
+    },
+    {
+      "id": 5,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha / Lavanderia",
+      "modulo": "Mob. Lavanderia",
+      "tipo": "rodape",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.90,
+      "largura_m": 0.10,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 0.90, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Altura 0,10 m por fallback R8"
+      ]
+    },
+    {
+      "id": 6,
+      "prancha_idx": 1,
+      "status": "parcial",
+      "ambiente": "Cozinha / Lavanderia",
+      "modulo": "Mob. Lavanderia",
+      "tipo": "saia",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.90,
+      "largura_m": 0.05,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 0.90, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Rodapia 5 cm — comprimento frontal MOD-02 conforme R2"
+      ]
+    },
+    {
+      "id": 7,
+      "prancha_idx": 2,
+      "status": "aguardando",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Forno",
+      "tipo": "tampo",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.60,
+      "largura_m": 0.60,
+      "borda_ml": 0.60,
+      "servicos": [
+        {"nome": "Borda Reta Meia Esquadria", "qtd": 0.60, "unidade": "ml"},
+        {"nome": "Instalacao tampo sobre base", "qtd": 0.60, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Confirmar se tampo ao lado do forno é Granito Tabaco ou MDF Cristalina — cor na Vista B parece mais clara",
+        "Se for ala de retorno do tampo em L do Mob. Pia (R4), comprimento real pode ser diferente de 0,60 m",
+        "Comprimento 0,60 m estimado por módulo forno padrão — sem cota legível"
+      ]
+    },
+    {
+      "id": 8,
+      "prancha_idx": 2,
+      "status": "aguardando",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Forno",
+      "tipo": "rodape",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.60,
+      "largura_m": 0.10,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 0.60, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Aguardando confirmação de que MOD-03 não é ala de retorno do MOD-01 (R4) — se for, este item é removido"
+      ]
+    },
+    {
+      "id": 9,
+      "prancha_idx": 2,
+      "status": "aguardando",
+      "ambiente": "Cozinha",
+      "modulo": "Mob. Forno",
+      "tipo": "saia",
+      "material": "Granito Tabaco",
+      "espessura_cm": 3,
+      "comprimento_m": 0.60,
+      "largura_m": 0.05,
+      "borda_ml": 0,
+      "servicos": [
+        {"nome": "Instalacao rodape", "qtd": 0.60, "unidade": "ml"}
+      ],
+      "pendencias": [
+        "Aguardando confirmação de que MOD-03 não é ala de retorno do MOD-01 (R4) — se for, este item é removido"
+      ]
+    }
+  ]
+}
+```

@@ -1,0 +1,291 @@
+Pipeline Router - C&A Projeto CEA-254-BLN
+Total pranchas: 27
+Limiares: [OK]DIRETO>=6 | [AU]IA_AUDITORIA>=3 | [IA]IA_NECESSARIA<3
+======================================================================
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-203 - INT AXONOMETRICAS
+Tipo: INT/ILU - iluminacao / axonometrica - visual
+Fontes: PDF=OK | DXF=-- | PNG=OK
+PDF  : 29 linhas | 0 c/medidas | 0 tab.CEA-QNT | quadro=nao | 4 tabelas
+Score: 0 -> [IA] IA_NECESSARIA
+Motivo: DXF: nao disponivel; tipo 2 visual (-3)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-302 - ARQ TAPUME
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 108 linhas | 4 c/medidas | 2 tab.CEA-QNT | quadro=nao | 7 tabelas
+DXF  : 61 layers | 27 cotas | 151 blocos | 163 textos | 346 hatches
+Score: 12 -> [OK] DIRETO
+Motivo: PDF: 2 tab.CEA-QNT (+8); DXF: 27 cotas (+1); DXF: 151 blocos (+2); DXF: 61 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-303 - AREA TÉCNICA
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 710 linhas | 32 c/medidas | 2 tab.CEA-QNT | quadro=sim | 13 tabelas
+DXF  : 78 layers | 18 cotas | 516 blocos | 1458 textos | 997 hatches
+Score: 18 -> [OK] DIRETO
+Motivo: PDF: 2 tab.CEA-QNT (+8); PDF: Quadro Acabamentos (+3); PDF: 32 linhas medidas (+3); PDF: tags A=...m2 (+1); DXF: 516 blocos (+2); DXF: 78 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-305 - ARQ SANITARIOS
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 903 linhas | 11 c/medidas | 3 tab.CEA-QNT | quadro=sim | 14 tabelas
+DXF  : 74 layers | 248 cotas | 668 blocos | 1167 textos | 2222 hatches
+Score: 23 -> [OK] DIRETO
+Motivo: PDF: 3 tab.CEA-QNT (+12); PDF: Quadro Acabamentos (+3); PDF: 11 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 248 cotas (+3); DXF: 668 blocos (+2); DXF: 74 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-306 - ARQ CAIXILHOS
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 514 linhas | 13 c/medidas | 0 tab.CEA-QNT | quadro=nao | 13 tabelas
+DXF  : 53 layers | 104 cotas | 210 blocos | 636 textos | 1109 hatches
+Score: 7 -> [OK] DIRETO
+Motivo: PDF: 13 linhas medidas (+1); DXF: 104 cotas (+3); DXF: 210 blocos (+2); DXF: 53 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-307 - ARQ DIVISORIAS
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 81 linhas | 0 c/medidas | 2 tab.CEA-QNT | quadro=nao | 5 tabelas
+DXF  : 48 layers | 16 cotas | 136 blocos | 170 textos | 384 hatches
+Score: 11 -> [OK] DIRETO
+Motivo: PDF: 2 tab.CEA-QNT (+8); DXF: 136 blocos (+2); DXF: 48 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-308 - ARQ CORREIO PNEUMATICO
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : ERRO: ["Invalid octal b'407' (263)"]
+DXF  : 79 layers | 17 cotas | 350 blocos | 249 textos | 804 hatches
+Score: 3 -> [AU] IA_AUDITORIA
+Motivo: PDF: falhou; DXF: 350 blocos (+2); DXF: 79 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-310 - ARQ PAREDE CREMALHEIRAS
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 113 linhas | 0 c/medidas | 0 tab.CEA-QNT | quadro=nao | 4 tabelas
+DXF  : 74 layers | 56 cotas | 812 blocos | 153 textos | 667 hatches
+Score: 5 -> [AU] IA_AUDITORIA
+Motivo: DXF: 56 cotas (+2); DXF: 812 blocos (+2); DXF: 74 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-311 - ARQ CORTES GERAIS
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 486 linhas | 19 c/medidas | 0 tab.CEA-QNT | quadro=sim | 9 tabelas
+DXF  : 85 layers | 12 cotas | 4321 blocos | 931 textos | 24648 hatches
+Score: 8 -> [OK] DIRETO
+Motivo: PDF: Quadro Acabamentos (+3); PDF: 19 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 4321 blocos (+2); DXF: 85 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-312 - ARQ SALA DE REUNIOES
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 504 linhas | 29 c/medidas | 2 tab.CEA-QNT | quadro=sim | 17 tabelas
+DXF  : 65 layers | 17 cotas | 394 blocos | 953 textos | 285 hatches
+Score: 17 -> [OK] DIRETO
+Motivo: PDF: 2 tab.CEA-QNT (+8); PDF: Quadro Acabamentos (+3); PDF: 29 linhas medidas (+2); PDF: tags A=...m2 (+1); DXF: 394 blocos (+2); DXF: 65 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-313 - ARQ ELEVADORES
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 126 linhas | 13 c/medidas | 4 tab.CEA-QNT | quadro=nao | 12 tabelas
+DXF  : 72 layers | 2 cotas | 319 blocos | 219 textos | 559 hatches
+Score: 20 -> [OK] DIRETO
+Motivo: PDF: 4 tab.CEA-QNT (+16); PDF: 13 linhas medidas (+1); DXF: 319 blocos (+2); DXF: 72 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-314 - ARQ DOCA
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 29 linhas | 0 c/medidas | 0 tab.CEA-QNT | quadro=nao | 10 tabelas
+DXF  : 9 layers | 0 cotas | 2 blocos | 50 textos | 10 hatches
+Score: 0 -> [IA] IA_NECESSARIA
+Motivo: 
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-315 - ARQ ESTANTES
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 47 linhas | 0 c/medidas | 1 tab.CEA-QNT | quadro=nao | 7 tabelas
+DXF  : 37 layers | 0 cotas | 160 blocos | 70 textos | 186 hatches
+Score: 7 -> [OK] DIRETO
+Motivo: PDF: 1 tab.CEA-QNT (+4); DXF: 160 blocos (+2); DXF: 37 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-341 - ARQ FACHADAS E VITRINES
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 429 linhas | 11 c/medidas | 3 tab.CEA-QNT | quadro=nao | 13 tabelas
+DXF  : 77 layers | 71 cotas | 343 blocos | 619 textos | 2589 hatches
+Score: 20 -> [OK] DIRETO
+Motivo: PDF: 3 tab.CEA-QNT (+12); PDF: 11 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 71 cotas (+3); DXF: 343 blocos (+2); DXF: 77 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-351 - ARQ ESCADA FIXA
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 311 linhas | 8 c/medidas | 0 tab.CEA-QNT | quadro=nao | 17 tabelas
+DXF  : 76 layers | 32 cotas | 399 blocos | 317 textos | 1102 hatches
+Score: 4 -> [AU] IA_AUDITORIA
+Motivo: DXF: 32 cotas (+1); DXF: 399 blocos (+2); DXF: 76 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R02-602 - CVS COMUNICAÇÃO VISUAL_VINHETES
+Tipo: CVS - comunicacao visual - visual
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 216 linhas | 3 c/medidas | 0 tab.CEA-QNT | quadro=nao | 7 tabelas
+DXF  : 14 layers | 40 cotas | 2 blocos | 259 textos | 22 hatches
+Score: 0 -> [IA] IA_NECESSARIA
+Motivo: DXF: 40 cotas (+2); tipo 6 visual (-3)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-131-DEC PROVADORES
+Tipo: INT/DEC - interior decorativo - visual complexo
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 760 linhas | 22 c/medidas | 1 tab.CEA-QNT | quadro=sim | 29 tabelas
+DXF  : 57 layers | 151 cotas | 471 blocos | 1042 textos | 3337 hatches
+Score: 13 -> [OK] DIRETO
+Motivo: PDF: 1 tab.CEA-QNT (+4); PDF: Quadro Acabamentos (+3); PDF: 22 linhas medidas (+2); PDF: tags A=...m2 (+1); DXF: 151 cotas (+3); DXF: 471 blocos (+2); DXF: 57 layers (+1); tipo 1 visual (-3)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-132-DEC PROVADORES
+Tipo: INT/DEC - interior decorativo - visual complexo
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 348 linhas | 8 c/medidas | 0 tab.CEA-QNT | quadro=sim | 15 tabelas
+DXF  : 39 layers | 51 cotas | 269 blocos | 467 textos | 377 hatches
+Score: 6 -> [OK] DIRETO
+Motivo: PDF: Quadro Acabamentos (+3); PDF: tags A=...m2 (+1); DXF: 51 cotas (+2); DXF: 269 blocos (+2); DXF: 39 layers (+1); tipo 1 visual (-3)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-201-INT ILUMINAÇÃO SEM MOB
+Tipo: INT/ILU - iluminacao / axonometrica - visual
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 749 linhas | 36 c/medidas | 0 tab.CEA-QNT | quadro=nao | 20 tabelas
+DXF  : 39 layers | 238 cotas | 184 blocos | 1201 textos | 873 hatches
+Score: 7 -> [OK] DIRETO
+Motivo: PDF: 36 linhas medidas (+3); PDF: tags A=...m2 (+1); DXF: 238 cotas (+3); DXF: 184 blocos (+2); DXF: 39 layers (+1); tipo 2 visual (-3)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-301-ARQ CIVIL
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 809 linhas | 55 c/medidas | 3 tab.CEA-QNT | quadro=sim | 23 tabelas
+DXF  : 66 layers | 110 cotas | 252 blocos | 1767 textos | 712 hatches
+Score: 25 -> [OK] DIRETO
+Motivo: PDF: 3 tab.CEA-QNT (+12); PDF: Quadro Acabamentos (+3); PDF: 55 linhas medidas (+3); PDF: tags A=...m2 (+1); DXF: 110 cotas (+3); DXF: 252 blocos (+2); DXF: 66 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-304-ARQ COPA
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 514 linhas | 12 c/medidas | 3 tab.CEA-QNT | quadro=sim | 17 tabelas
+DXF  : 55 layers | 118 cotas | 237 blocos | 670 textos | 398 hatches
+Score: 23 -> [OK] DIRETO
+Motivo: PDF: 3 tab.CEA-QNT (+12); PDF: Quadro Acabamentos (+3); PDF: 12 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 118 cotas (+3); DXF: 237 blocos (+2); DXF: 55 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-309-ARQ DESCOMPRESSÃO
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 597 linhas | 18 c/medidas | 3 tab.CEA-QNT | quadro=sim | 19 tabelas
+DXF  : 40 layers | 48 cotas | 94 blocos | 1040 textos | 257 hatches
+Score: 22 -> [OK] DIRETO
+Motivo: PDF: 3 tab.CEA-QNT (+12); PDF: Quadro Acabamentos (+3); PDF: 18 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 48 cotas (+2); DXF: 94 blocos (+2); DXF: 40 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-321-ARQ FORRO
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 504 linhas | 18 c/medidas | 1 tab.CEA-QNT | quadro=sim | 9 tabelas
+DXF  : 33 layers | 75 cotas | 92 blocos | 957 textos | 714 hatches
+Score: 15 -> [OK] DIRETO
+Motivo: PDF: 1 tab.CEA-QNT (+4); PDF: Quadro Acabamentos (+3); PDF: 18 linhas medidas (+1); PDF: tags A=...m2 (+1); DXF: 75 cotas (+3); DXF: 92 blocos (+2); DXF: 33 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-331-ARQ PISO
+Tipo: ARQ - arquitetonico - mixed
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 680 linhas | 35 c/medidas | 4 tab.CEA-QNT | quadro=sim | 8 tabelas
+DXF  : 43 layers | 62 cotas | 130 blocos | 1243 textos | 1106 hatches
+Score: 29 -> [OK] DIRETO
+Motivo: PDF: 4 tab.CEA-QNT (+16); PDF: Quadro Acabamentos (+3); PDF: 35 linhas medidas (+3); PDF: tags A=...m2 (+1); DXF: 62 cotas (+3); DXF: 130 blocos (+2); DXF: 43 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-501-LAY LAYOUT
+Tipo: LAY - layout / areas - rico em dados
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 412 linhas | 42 c/medidas | 0 tab.CEA-QNT | quadro=nao | 13 tabelas
+DXF  : 50 layers | 66 cotas | 417 blocos | 721 textos | 799 hatches
+Score: 10 -> [OK] DIRETO
+Motivo: PDF: 42 linhas medidas (+3); PDF: tags A=...m2 (+1); DXF: 66 cotas (+3); DXF: 417 blocos (+2); DXF: 50 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-502-LAY ÁREAS
+Tipo: LAY - layout / areas - rico em dados
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 1418 linhas | 0 c/medidas | 0 tab.CEA-QNT | quadro=nao | 5 tabelas
+DXF  : 43 layers | 1 cotas | 1934 blocos | 2619 textos | 4124 hatches
+Score: 3 -> [AU] IA_AUDITORIA
+Motivo: DXF: 1934 blocos (+2); DXF: 43 layers (+1)
+
+======================================================================
+Prancha: CEA-254-BLN-ARQ_R03-601- CVS COMUNICAÇÃO VISUAL E SINALIZAÇÃO
+Tipo: CVS - comunicacao visual - visual
+Fontes: PDF=OK | DXF=OK | PNG=OK
+PDF  : 358 linhas | 6 c/medidas | 0 tab.CEA-QNT | quadro=nao | 15 tabelas
+DXF  : 54 layers | 11 cotas | 478 blocos | 486 textos | 900 hatches
+Score: 0 -> [IA] IA_NECESSARIA
+Motivo: DXF: 478 blocos (+2); DXF: 54 layers (+1); tipo 6 visual (-3)
+
+======================================================================
+RESUMO FINAL
+======================================================================
+
+[OK] DIRETO (19) - extracao PDF+DXF suficiente, IA dispensavel:
+   [12] CEA-254-BLN-ARQ_R02-302 - ARQ TAPUME
+   [18] CEA-254-BLN-ARQ_R02-303 - AREA TÉCNICA
+   [23] CEA-254-BLN-ARQ_R02-305 - ARQ SANITARIOS
+   [ 7] CEA-254-BLN-ARQ_R02-306 - ARQ CAIXILHOS
+   [11] CEA-254-BLN-ARQ_R02-307 - ARQ DIVISORIAS
+   [ 8] CEA-254-BLN-ARQ_R02-311 - ARQ CORTES GERAIS
+   [17] CEA-254-BLN-ARQ_R02-312 - ARQ SALA DE REUNIOES
+   [20] CEA-254-BLN-ARQ_R02-313 - ARQ ELEVADORES
+   [ 7] CEA-254-BLN-ARQ_R02-315 - ARQ ESTANTES
+   [20] CEA-254-BLN-ARQ_R02-341 - ARQ FACHADAS E VITRINES
+   [13] CEA-254-BLN-ARQ_R03-131-DEC PROVADORES
+   [ 6] CEA-254-BLN-ARQ_R03-132-DEC PROVADORES
+   [ 7] CEA-254-BLN-ARQ_R03-201-INT ILUMINAÇÃO SEM MOB
+   [25] CEA-254-BLN-ARQ_R03-301-ARQ CIVIL
+   [23] CEA-254-BLN-ARQ_R03-304-ARQ COPA
+   [22] CEA-254-BLN-ARQ_R03-309-ARQ DESCOMPRESSÃO
+   [15] CEA-254-BLN-ARQ_R03-321-ARQ FORRO
+   [29] CEA-254-BLN-ARQ_R03-331-ARQ PISO
+   [10] CEA-254-BLN-ARQ_R03-501-LAY LAYOUT
+
+[AU] IA_AUDITORIA (4) - dados parciais, IA confirma:
+   [ 3] CEA-254-BLN-ARQ_R02-308 - ARQ CORREIO PNEUMATICO
+   [ 5] CEA-254-BLN-ARQ_R02-310 - ARQ PAREDE CREMALHEIRAS
+   [ 4] CEA-254-BLN-ARQ_R02-351 - ARQ ESCADA FIXA
+   [ 3] CEA-254-BLN-ARQ_R03-502-LAY ÁREAS
+
+[IA] IA_NECESSARIA (4) - pouco dado estruturado, IA essencial:
+   [ 0] CEA-254-BLN-ARQ_R02-203 - INT AXONOMETRICAS
+   [ 0] CEA-254-BLN-ARQ_R02-314 - ARQ DOCA
+   [ 0] CEA-254-BLN-ARQ_R02-602 - CVS COMUNICAÇÃO VISUAL_VINHETES
+   [ 0] CEA-254-BLN-ARQ_R03-601- CVS COMUNICAÇÃO VISUAL E SINALIZAÇÃO
+
+Total pranchas: 27
+Chamadas IA estimadas: 8/27 (30%)
+Custo estimado IA: ~$0.40  (vs $1.35 sem filtro)
+Economia: ~70% das chamadas evitadas
+
+Relatorio: C:\Users\AVELL\Documents\Projects\AI-Agents\pipeline_router_report.txt
+JSON: C:\Users\AVELL\Documents\Projects\AI-Agents\pipeline_router_results.json
