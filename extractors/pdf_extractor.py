@@ -163,6 +163,10 @@ def parse_cea_qnt_tables(pdf: dict) -> list[dict]:
             any(w in header_text for w in ("área", "setor", "ambiente", "zona"))
             and not any(w in header_text for w in ("comp", "m²/ml", "qtd", "paredes", "total"))
         )
+        # Tabela CEA-QNT RODAPÉS: cabeçalho contém "metro linear" ou "rodap" → valores sem sufixo são ml
+        is_rodape_table = any(
+            w in header_text for w in ("metro linear", "rodap", " ml", "ml ")
+        )
 
         for row in table[1:]:
             if len(row) < 2:
@@ -215,7 +219,11 @@ def parse_cea_qnt_tables(pdf: dict) -> list[dict]:
                 unidade = "un"
             else:
                 qty = parse_float(qtd_raw)
-                unidade = "m2"
+                # Heurística: tabela de rodapés ou descrição contém "rodap" → metro linear
+                if is_rodape_table or "rodap" in descricao.lower():
+                    unidade = "ml"
+                else:
+                    unidade = "m2"
 
             if qty <= 0:
                 continue
