@@ -42,8 +42,10 @@ async function waitForService(timeoutMs: number): Promise<void> {
 }
 
 export async function ensureServiceRunning(): Promise<void> {
-  if (G._pyReady && await isAlive()) return;
-  G._pyReady = false;
+  // Se já confirmamos que está rodando, confiamos no flag — não pingamos toda chamada.
+  // Se uma requisição falhar depois, proxyToPython redefine _pyReady=false para forçar
+  // o recheck na próxima tentativa.
+  if (G._pyReady) return;
 
   if (await isAlive()) { G._pyReady = true; return; }
   if (G._pyBooting)   { await waitForService(60_000); G._pyReady = true; return; }

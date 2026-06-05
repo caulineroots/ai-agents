@@ -11,6 +11,7 @@ Uso:
 import os
 import re
 import json
+import asyncio
 import tempfile
 import base64
 import logging
@@ -279,7 +280,9 @@ async def ler_prancha(
     prompt = build_leitura_geral_prompt(batch_items[:len(images_b64)])
 
     try:
-        raw_text, tokens_in, tokens_out, custo = call_claude_multi(prompt, images_b64, api_key)
+        raw_text, tokens_in, tokens_out, custo = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: call_claude_multi(prompt, images_b64, api_key)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao chamar Claude (ler-prancha): {e}")
 
@@ -338,7 +341,9 @@ async def orquestrar(
     prompt = build_orchestrator_prompt(leitura_map, extract_summary)
 
     try:
-        raw_text, tokens_in, tokens_out, custo = call_claude_multi(prompt, [], api_key)
+        raw_text, tokens_in, tokens_out, custo = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: call_claude_multi(prompt, [], api_key)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao chamar Claude (orquestrador): {e}")
 
@@ -410,7 +415,9 @@ async def analisar_batch(
     prompt = build_batch_prompt(contexto_projeto, batch_items[:len(images_b64)])
 
     try:
-        raw_text, tokens_in, tokens_out, custo = call_claude_multi(prompt, images_b64, api_key)
+        raw_text, tokens_in, tokens_out, custo = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: call_claude_multi(prompt, images_b64, api_key)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao chamar Claude (batch): {e}")
 
