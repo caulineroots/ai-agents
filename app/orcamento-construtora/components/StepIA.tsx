@@ -371,9 +371,10 @@ export function StepIA({
 
       const allLeituras: PranchaLeitura[] = [];
 
-      for (let bi = 0; bi < batches.length; bi++) {
-        const batch = batches[bi];
-        const fd    = new FormData();
+      // Roda até 3 batches em paralelo — speedup ~3× sem estourar rate limit
+      const LEITURA_CONCURRENCY = 3;
+      const leituraTasks = batches.map((batch, bi) => async () => {
+        const fd         = new FormData();
         const batch_items: object[] = [];
 
         for (let j = 0; j < batch.length; j++) {
@@ -407,10 +408,17 @@ export function StepIA({
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           setErro((prev) => (prev ? prev + '\n' : '') + `Leitura batch ${bi + 1}: ${msg}`);
+        } finally {
+          setLeituraProgress((p) => ({ ...p, done: p.done + 1 }));
         }
+      });
 
-        setLeituraProgress((p) => ({ ...p, done: p.done + 1 }));
-      }
+      const leituraQueue = [...leituraTasks];
+      await Promise.all(
+        Array.from({ length: Math.min(LEITURA_CONCURRENCY, leituraTasks.length) }, async () => {
+          while (leituraQueue.length > 0) await leituraQueue.shift()!();
+        }),
+      );
 
       setLeituraDone(true);
       console.log('[StepIA] Leitura Geral concluída:', allLeituras.length, 'pranchas lidas');
@@ -485,8 +493,9 @@ export function StepIA({
 
     const allBatchedRaw: Record<string, RawIAItem[]> = {};
 
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batchStems = batches[bi];
+    // Roda até 3 batches em paralelo — speedup ~3× sem estourar rate limit
+    const BATCH_CONCURRENCY = 3;
+    const batchTasks = batches.map((batchStems, bi) => async () => {
       const fd         = new FormData();
       const batch_items: object[] = [];
 
@@ -574,10 +583,17 @@ export function StepIA({
         const msg = e instanceof Error ? e.message : String(e);
         setErro((prev) => (prev ? prev + '\n' : '') + `Batch ${bi + 1}: ${msg}`);
         setBatchResults((prev) => [...prev, { batch: bi + 1, stems: batchStems, erro: msg }]);
+      } finally {
+        setBatchProgress((p) => ({ ...p, done: p.done + 1 }));
       }
+    });
 
-      setBatchProgress((p) => ({ ...p, done: p.done + 1 }));
-    }
+    const batchQueue = [...batchTasks];
+    await Promise.all(
+      Array.from({ length: Math.min(BATCH_CONCURRENCY, batchTasks.length) }, async () => {
+        while (batchQueue.length > 0) await batchQueue.shift()!();
+      }),
+    );
 
     // ── Normaliza chave para deduplicação ──────────────────────────────────
     function normKey(desc: string): string {
