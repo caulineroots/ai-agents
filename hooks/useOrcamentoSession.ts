@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { imageStore, type PranchaGroup } from '@/lib/orcamento-construtora/image-store';
 import type { FolhaOrcamento, ResultadoOrcamento } from '@/lib/orcamento-construtora/types';
-import type { OrquestradorResult } from '@/app/orcamento-construtora/components/StepIA';
+import type { OrquestradorResult, BatchRecord } from '@/app/orcamento-construtora/components/StepIA';
 
 export type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -63,6 +63,7 @@ function lsLoad(): {
   extractResults?: PranchaExtractResult[];
   leituraMap?: PranchaLeitura[];
   orchResult?: OrquestradorResult;
+  batchResults?: BatchRecord[];
   folha?: FolhaOrcamento;
   resultado?: ResultadoOrcamento;
   tokenLogs?: TokenLog[];
@@ -87,6 +88,7 @@ export function useOrcamentoSession() {
   const [extractResults, setExtractResults] = useState<PranchaExtractResult[]>([]);
   const [leituraMap,     setLeituraMap]     = useState<PranchaLeitura[]>([]);
   const [orchResult,     setOrchResult]     = useState<OrquestradorResult | null>(null);
+  const [batchResults,   setBatchResults]   = useState<BatchRecord[]>([]);
   const [folha,          setFolha]          = useState<FolhaOrcamento | null>(null);
   const [resultado,      setResultado]      = useState<ResultadoOrcamento | null>(null);
   const [tokenLogs,      setTokenLogs]      = useState<TokenLog[]>([]);
@@ -101,6 +103,7 @@ export function useOrcamentoSession() {
     if (s.extractResults) setExtractResults(s.extractResults);
     if (s.leituraMap)     setLeituraMap(s.leituraMap);
     if (s.orchResult)     setOrchResult(s.orchResult);
+    if (s.batchResults?.length) setBatchResults(s.batchResults);
     if (s.folha)          setFolha(s.folha);
     if (s.resultado)      setResultado(s.resultado);
     if (s.tokenLogs?.length) setTokenLogs(s.tokenLogs);
@@ -110,7 +113,7 @@ export function useOrcamentoSession() {
   // Persist — só quando há dados relevantes
   useEffect(() => {
     if (!folha && !resultado && extractResults.length === 0) return;
-    lsSave({ step, stems, extractResults, leituraMap, orchResult, folha, resultado, tokenLogs });
+    lsSave({ step, stems, extractResults, leituraMap, orchResult, batchResults, folha, resultado, tokenLogs });
   }, [step, stems, extractResults, leituraMap, orchResult, folha, resultado, tokenLogs]);
 
   // Registra grupos no store externo e atualiza stems no state
@@ -152,6 +155,7 @@ export function useOrcamentoSession() {
     setExtractResults([]);
     setLeituraMap([]);
     setOrchResult(null);
+    setBatchResults([]);
     setFolha(null);
     setResultado(null);
     setTokenLogs([]);
@@ -162,7 +166,7 @@ export function useOrcamentoSession() {
     const payload = {
       version: 4,
       exportedAt: new Date().toISOString(),
-      stems, extractResults, leituraMap, orchResult, folha, resultado, tokenLogs, step,
+      stems, extractResults, leituraMap, orchResult, batchResults, folha, resultado, tokenLogs, step,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
@@ -184,6 +188,7 @@ export function useOrcamentoSession() {
         if (data.extractResults) setExtractResults(data.extractResults);
         if (data.leituraMap)     setLeituraMap(data.leituraMap);
         if (data.orchResult)     setOrchResult(data.orchResult);
+        if (data.batchResults?.length) setBatchResults(data.batchResults);
         if (data.folha)          setFolha(data.folha);
         if (data.resultado)      setResultado(data.resultado);
         if (data.tokenLogs)      setTokenLogs(data.tokenLogs);
@@ -203,6 +208,7 @@ export function useOrcamentoSession() {
     extractResults, setExtractResults,
     leituraMap, setLeituraMap,
     orchResult, setOrchResult,
+    batchResults, setBatchResults,
     folha, setFolha,
     resultado, setResultado,
     tokenLogs, setTokenLogs,

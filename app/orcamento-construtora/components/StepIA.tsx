@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PranchaGroup }        from '@/lib/orcamento-construtora/image-store';
 import type { PranchaExtractResult, PranchaLeitura, TokenLog } from '@/hooks/useOrcamentoSession';
 import type { FolhaOrcamento, ItemOrcamento, Categoria, Unidade } from '@/lib/orcamento-construtora/types';
 import { mergeFolhas } from '@/lib/orcamento-construtora/merge-folhas';
+import { AIDebugModal, type AIDebugEntry } from './AIDebugModal';
 
 // ─── Tipos locais ─────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ export interface OrquestradorResult {
   metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
 }
 
-interface BatchRecord {
+export interface BatchRecord {
   batch:    number;
   stems:    string[];
   batched?: Record<string, RawIAItem[]>;
@@ -213,7 +214,7 @@ function LeituraCard({ leitura }: { leitura: PranchaLeitura }) {
 
 // ─── Sub-componente: card de um batch de detalhe ─────────────────────────────
 
-function BatchCard({ br }: { br: BatchRecord }) {
+function BatchCard({ br, onDebug }: { br: BatchRecord; onDebug?: () => void }) {
   const [open, setOpen] = useState(false);
   const totalItens = Object.values(br.batched ?? {}).reduce((s, arr) => s + arr.length, 0);
   const s = br.stats;
@@ -247,6 +248,16 @@ function BatchCard({ br }: { br: BatchRecord }) {
         )}
         {!br.erro && !s && (
           <span className="text-xs text-gray-400 flex-shrink-0">{totalItens} itens {open ? '▲' : '▼'}</span>
+        )}
+        {onDebug && (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onDebug(); }}
+            className="flex-shrink-0 px-2 py-1 text-xs rounded border border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer"
+            title="Ver prompt e output bruto"
+          >
+            🔍
+          </span>
         )}
       </button>
 
@@ -310,12 +321,18 @@ export function StepIA({
   extractResults,
   existingLeituraMap,
   existingOrchResult,
+  existingBatchResults,
+  existingFinalFolha,
+  onBatchResultsChange,
   onDone,
 }: {
   groups:              PranchaGroup[];
   extractResults:      PranchaExtractResult[];
   existingLeituraMap:  PranchaLeitura[];
   existingOrchResult:  OrquestradorResult | null;
+  existingBatchResults?: BatchRecord[];
+  existingFinalFolha?:   FolhaOrcamento | null;
+  onBatchResultsChange?: (results: BatchRecord[]) => void;
   onDone: (folha: FolhaOrcamento, orch: OrquestradorResult, leituraMap: PranchaLeitura[], logs: TokenLog[]) => void;
 }) {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -329,13 +346,29 @@ export function StepIA({
 
   const [batchRunning,  setBatchRunning]  = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
-  const [batchResults,  setBatchResults]  = useState<BatchRecord[]>([]);
-  const [batchDone,     setBatchDone]     = useState(false);
+  const [batchResults,  setBatchResults]  = useState<BatchRecord[]>(existingBatchResults ?? []);
+  const [batchDone,     setBatchDone]     = useState((existingBatchResults?.length ?? 0) > 0);
 
-  const [finalFolha, setFinalFolha] = useState<FolhaOrcamento | null>(null);
+  // Restore the pre-review merged folha so "Ver Revisão →" re-appears on back-navigation.
+  const [finalFolha, setFinalFolha] = useState<FolhaOrcamento | null>(existingFinalFolha ?? null);
+
+  // Sync batchResults to session whenever they change (so remount can restore them).
+  useEffect(() => {
+    onBatchResultsChange?.(batchResults);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchResults]);
   const [tokenLogs,  setTokenLogs]  = useState<TokenLog[]>([]);
   const [erro,       setErro]       = useState('');
   const runRef = useRef(false);
+
+  const [debugEntries,   setDebugEntries]   = useState<AIDebugEntry[]>([]);
+  const [showDebug,      setShowDebug]      = useState(false);
+  const [debugInitialIdx, setDebugInitialIdx] = useState<number | undefined>(undefined);
+
+  const openDebug = useCallback((idx?: number) => {
+    setDebugInitialIdx(idx);
+    setShowDebug(true);
+  }, []);
 
   const addLog = useCallback((stage: string, meta: { tokens_input?: number; tokens_output?: number }) => {
     setTokenLogs((prev) => [...prev, {
@@ -398,8 +431,15 @@ export function StepIA({
           const data = await r.json() as {
             leituras?: Record<string, PranchaLeitura>;
             metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+            prompt_sent?: string;
+            raw_output?:  string;
             error?: string;
           };
+          setDebugEntries((prev) => [...prev, {
+            label:  `Leitura ${bi + 1}/${batches.length}`,
+            prompt: data.prompt_sent ?? '(não disponível)',
+            output: data.raw_output  ?? '(não disponível)',
+          }]);
           if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
           addLog(`Leitura ${bi + 1}/${batches.length}`, data.metadata ?? {});
           const novas = Object.values(data.leituras ?? {});
@@ -460,7 +500,16 @@ export function StepIA({
 
     try {
       const r    = await fetch('/api/orcamento-construtora/orquestrar', { method: 'POST', body: fd });
-      const data = await r.json() as OrquestradorResult & { error?: string };
+      const data = await r.json() as OrquestradorResult & {
+        prompt_sent?: string;
+        raw_output?:  string;
+        error?: string;
+      };
+      setDebugEntries((prev) => [...prev, {
+        label:  'Orquestrador',
+        prompt: data.prompt_sent ?? '(não disponível)',
+        output: data.raw_output  ?? '(não disponível)',
+      }]);
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
       addLog('Orquestrador', data.metadata ?? {});
       setOrchResult(data);
@@ -510,6 +559,18 @@ export function StepIA({
           const compressed = await compressImageFile(g.imageFile);
           fd.append(`image_${j}`, compressed, compressed.name);
         }
+        // Envia pdf_clean_lines quando a extração por código foi fraca (< 5 confirmados).
+        // O Claude usa o texto como canal complementar à imagem para ler tabelas
+        // (Quadro de Áreas, Quadro de Luminárias, etc.) que ficam ilegíveis após compressão JPEG.
+        const nConfirmados = (er?.itens_extraidos ?? []).filter(
+          (it) => (it as Record<string, unknown>).status !== 'aguardando' && ((it as Record<string, unknown>).quantidade as number ?? 0) > 0
+        ).length;
+        const dbg = er?.debug as Record<string, unknown> | undefined;
+        const rawCleanLines = dbg?.pdf_clean_lines as string[] | undefined;
+        const pdfCleanLines = nConfirmados < 5 && rawCleanLines?.length
+          ? rawCleanLines.slice(0, 200)   // teto de 200 linhas ≈ 3k-5k tokens
+          : undefined;
+
         batch_items.push({
           stem,
           itens_extraidos:  er?.itens_extraidos ?? [],
@@ -519,6 +580,7 @@ export function StepIA({
           perguntas:        orch?.perguntas ?? [],
           escopo_permitido: orch?.escopo_permitido ?? [],
           escopo_proibido:  orch?.escopo_proibido ?? [],
+          ...(pdfCleanLines ? { pdf_clean_lines: pdfCleanLines } : {}),
         });
       }
       fd.append('context_json', JSON.stringify({
@@ -531,8 +593,15 @@ export function StepIA({
         const data = await r.json() as {
           batched?: Record<string, RawIAItem[]>;
           metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+          prompt_sent?: string;
+          raw_output?:  string;
           error?: string;
         };
+        setDebugEntries((prev) => [...prev, {
+          label:  `Detalhe batch ${bi + 1}/${batches.length}`,
+          prompt: data.prompt_sent ?? '(não disponível)',
+          output: data.raw_output  ?? '(não disponível)',
+        }]);
         if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
         addLog(`Detalhe ${bi + 1}/${batches.length}`, data.metadata ?? {});
         Object.assign(allBatchedRaw, data.batched ?? {});
@@ -662,11 +731,33 @@ export function StepIA({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800">Passo 3 — Análise com IA</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Três estágios sequenciais: leitura completa do projeto → orquestração de gaps → análise de detalhe.
-        </p>
+      {showDebug && debugEntries.length > 0 && (
+        <AIDebugModal
+          entries={debugEntries}
+          initialIndex={debugInitialIdx}
+          onClose={() => setShowDebug(false)}
+        />
+      )}
+
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Passo 3 — Análise com IA</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Três estágios sequenciais: leitura completa do projeto → orquestração de gaps → análise de detalhe.
+          </p>
+        </div>
+        {debugEntries.length > 0 && (
+          <button
+            onClick={() => openDebug()}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+          >
+            <span>🔍</span>
+            Debug IA
+            <span className="ml-1 px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded-full text-xs font-bold">
+              {debugEntries.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* ─── Estágio 1: Leitura Geral ───────────────────────────────────────── */}
@@ -788,6 +879,18 @@ export function StepIA({
                 : 'Aguardando Estágio 1'}
             </p>
           </div>
+          {orchResult && (() => {
+            const idx = debugEntries.findIndex((e) => e.label === 'Orquestrador');
+            return idx >= 0 ? (
+              <button
+                onClick={() => openDebug(idx)}
+                className="flex-shrink-0 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
+                title="Ver prompt e output bruto"
+              >
+                🔍
+              </button>
+            ) : null;
+          })()}
           {leituraDone && !orchResult && !orchRunning && (
             <button
               onClick={runOrchestrator}
@@ -909,6 +1012,21 @@ export function StepIA({
               Detalhar ({nParaDetalhar}) →
             </button>
           )}
+          {orchResult && !batchRunning && batchDone && (
+            <button
+              onClick={() => {
+                setBatchResults([]);
+                setBatchDone(false);
+                setFinalFolha(null);
+                setErro('');
+                runBatches();
+              }}
+              className="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
+              title="Re-executar todos os batches do Estágio 3"
+            >
+              ↺ Re-executar
+            </button>
+          )}
           {batchRunning && (
             <span className="text-xs text-blue-500 animate-pulse flex-shrink-0">
               {batchProgress.done}/{batchProgress.total} batches…
@@ -929,7 +1047,16 @@ export function StepIA({
 
         {batchResults.length > 0 && (
           <div className="px-4 py-3 flex flex-col gap-3">
-            {batchResults.map((br) => <BatchCard key={br.batch} br={br} />)}
+            {batchResults.map((br) => {
+              const idx = debugEntries.findIndex((e) => e.label === `Detalhe batch ${br.batch}/${batchResults.length}`);
+              return (
+                <BatchCard
+                  key={br.batch}
+                  br={br}
+                  onDebug={idx >= 0 ? () => openDebug(idx) : undefined}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -944,9 +1071,25 @@ export function StepIA({
 
       {/* Erro */}
       {erro && (
-        <pre className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 whitespace-pre-wrap break-all">
-          {erro}
-        </pre>
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <pre className="text-xs text-red-700 whitespace-pre-wrap break-all flex-1">
+            {erro}
+          </pre>
+          {orchResult && !batchRunning && (
+            <button
+              onClick={() => {
+                setBatchResults([]);
+                setBatchDone(false);
+                setFinalFolha(null);
+                setErro('');
+                runBatches();
+              }}
+              className="flex-shrink-0 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 active:scale-95 transition-all whitespace-nowrap"
+            >
+              ↺ Tentar novamente
+            </button>
+          )}
+        </div>
       )}
 
       {/* Resumo + CTA */}

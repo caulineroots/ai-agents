@@ -25,7 +25,10 @@ from fastapi.responses import JSONResponse
 
 from config import BASE_DIR, ANTHROPIC_KEY, PDF_SUBDIR, DXF_SUBDIR, MODEL
 from schemas import ExtractionResult, Metadata
-from extractors.pdf_extractor import extract_pdf, parse_cea_qnt_tables, extract_partial_items_from_text
+from extractors.pdf_extractor import (
+    extract_pdf, parse_cea_qnt_tables, extract_partial_items_from_text,
+    parse_cea_qnt_from_text, parse_special_tables_from_text,
+)
 from extractors.dxf_extractor import extract_dxf
 from extractors.image_processor import compress_to_jpeg
 from extractors.context_builder import classify_prancha, build_context, build_prompt, PROMPT_NO_CONTEXT
@@ -36,6 +39,17 @@ from aprender import router as aprender_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extractor")
+
+# BUG-8: Pranchas visuais sem tabelas de quantidades — skip extract_partial
+# BUG-502-A: adicionado LAY\s+ÁREAS (ex: "502-LAY ÁREAS" não coberto por LAY[_\s]?OUT)
+_RE_VISUAL_PRANCHA = re.compile(
+    r"\b(CVS|COMUNICAÇÃO\s+VISUAL|VINHETE|AXONOM[EÉ]TRICA|CORTE\s+GERAL|"
+    r"DET\.?\s+LOGO|LAY[_\s]?OUT|ÁREAS?\s+TOTAIS|LAYOUT|LAY\s+[ÁA]REAS?)\b",
+    re.IGNORECASE,
+)
+
+# BUG-5: PDFs com QUADRO DE ACABAMENTOS mas sem CEA-QNT são pranchas de referência
+# — não rodar extract_partial (evita lixo de elevações/cortes)
 
 app = FastAPI(title="Extractor Service", version="2.0.0")
 app.add_middleware(
@@ -154,15 +168,37 @@ async def extrair_codigo(
         classificacao = "SEM_CONTEUDO"
 
     score = _score_prancha(pdf_data, dxf_data)
-    pdf_items = parse_cea_qnt_tables(pdf_data) if pdf_data["ok"] else []
+    # Parser baseado em seções de texto — resolve bleed, duplicatas e soleiras
+    pdf_items = parse_cea_qnt_from_text(pdf_data) if pdf_data["ok"] else []
+    if pdf_data["ok"] and not pdf_items:
+        # Fallback para PDFs sem seções CEA-QNT detectáveis no texto
+        pdf_items = parse_cea_qnt_tables(pdf_data)
+    # Tabelas especiais: QUADRO DE PORTAS, LUMINÁRIAS, COMUNICAÇÃO VISUAL
+    if pdf_data["ok"]:
+        seen_qa = {it.get("descricao", "") for it in pdf_items}
+        special_items = parse_special_tables_from_text(pdf_data, seen_qa)
+        if special_items:
+            pdf_items = pdf_items + special_items
+            log.info("  Tabelas especiais: +%d itens", len(special_items))
+    log.info("  Itens extraídos do PDF: %d", len(pdf_items))
+
     precisa_ia = classificacao in ("IA_AUDITORIA", "IA_NECESSARIA", "SEM_CONTEUDO")
 
     # ── Extração parcial (fallback para pranchas sem tabelas estruturadas) ───
-    # Para pranchas com score baixo ou sem tabelas CEA-QNT, tenta coletar
-    # descrições do texto bruto (sem qty) + contexto de alturas para a IA preencher.
     height_context: dict = {}
     partial_items: list = []
-    if pdf_data["ok"] and len(pdf_items) < 5:
+
+    has_quadro = bool(pdf_data.get("quadro_acabamentos"))
+    has_cea    = bool(pdf_data.get("cea_qnt_tables")) or bool(pdf_items)
+    # BUG-5: pranchas com QUADRO mas sem CEA-QNT são referências — skip partial
+    _skip_partial_quadro_only = has_quadro and not has_cea
+    # BUG-8: pranchas visuais (CVS, axo, layout) — skip partial
+    _skip_partial_visual = bool(_RE_VISUAL_PRANCHA.search(stem))
+
+    # BUG-7: só roda extract_partial se nenhum item CEA foi encontrado
+    if (pdf_data["ok"] and len(pdf_items) == 0
+            and not _skip_partial_quadro_only
+            and not _skip_partial_visual):
         seen_descs = {it.get("descricao", "") for it in pdf_items}
         partial_items, height_context = extract_partial_items_from_text(pdf_data, seen_descs)
         log.info("  Extração parcial: %d itens aguardando, height_context=%s",
@@ -189,29 +225,65 @@ async def extrair_codigo(
         for it in all_pdf_items
     ]
 
+    dxf_counts = dxf_data.get("counts", {
+        "layers": len(dxf_data.get("layers", [])),
+        "dims":   len(dxf_data.get("dims", [])),
+        "blocks": len(dxf_data.get("blocks", {})),
+        "texts":  len(dxf_data.get("texts", [])),
+    })
+
     debug = {
-        "pdf_ok": pdf_data["ok"],
-        "dxf_ok": dxf_data["ok"],
+        # ── Status geral ────────────────────────────────────────────────────────
+        "pdf_ok":       pdf_data["ok"],
+        "dxf_ok":       dxf_data["ok"],
         "image_enviada": bool(image and image.filename),
         "pdf_fonte": "upload" if (pdf and pdf.filename) else ("disco" if pdf_data["ok"] else "nao_encontrado"),
         "dxf_fonte": "upload" if (dxf and dxf.filename) else ("disco" if dxf_data["ok"] else "nao_encontrado"),
-        "n_tables_pdf": len(pdf_data.get("cea_qnt_tables", [])),
-        "n_quadro_acabamentos": len(pdf_data.get("quadro_acabamentos", [])),
-        "n_measure_lines": len(pdf_data.get("measure_lines", [])),
-        "n_area_tags": len(pdf_data.get("area_tags", [])),
-        "n_layers_dxf": len(dxf_data.get("layers", [])),
-        "n_dims_dxf": len(dxf_data.get("dims", [])),
-        "n_blocks_dxf": len(dxf_data.get("blocks", {})),
-        "n_texts_dxf": len(dxf_data.get("texts", [])),
-        "score": score,
-        "score_threshold_direto": 6,
+
+        # ── Score de classificação ───────────────────────────────────────────────
+        "score":                    score,
+        "score_threshold_direto":   6,
         "score_threshold_ia_auditoria": 3,
-        "erros_pdf": pdf_data.get("errors", []),
-        "erros_dxf": dxf_data.get("errors", []),
-        "erros_processamento": erros,
+        "classificacao":            classificacao,
+
+        # ── Resumo PDF ───────────────────────────────────────────────────────────
+        "pdf_n_raw_lines":          len(pdf_data.get("raw_text_lines", [])),
+        "pdf_n_clean_lines":        len(pdf_data.get("text_lines", [])),
+        "pdf_n_noise_removed":      len(pdf_data.get("noise_removed", [])),
+        "pdf_n_tables_cea_qnt":     len(pdf_data.get("cea_qnt_tables", [])),
+        "pdf_n_quadro_acabamentos": len(pdf_data.get("quadro_acabamentos", [])),
+        "pdf_n_measure_lines":      len(pdf_data.get("measure_lines", [])),
+        "pdf_n_area_tags":          len(pdf_data.get("area_tags", [])),
+
+        # ── Resumo DXF ───────────────────────────────────────────────────────────
+        "dxf_n_layers":  dxf_counts["layers"],
+        "dxf_n_dims":    dxf_counts["dims"],
+        "dxf_n_blocks":  dxf_counts["blocks"],
+        "dxf_n_texts":   dxf_counts["texts"],
+
+        # ── Itens extraídos ──────────────────────────────────────────────────────
         "n_itens_confirmados": len(pdf_items),
-        "n_itens_aguardando": len(partial_items),
-        "height_context": height_context,
+        "n_itens_aguardando":  len(partial_items),
+        "height_context":      height_context,
+
+        # ── Erros ────────────────────────────────────────────────────────────────
+        "erros_pdf":            pdf_data.get("errors", []),
+        "erros_dxf":            dxf_data.get("errors", []),
+        "erros_processamento":  erros,
+
+        # ── Dados completos para inspeção visual ─────────────────────────────────
+        "pdf_raw_lines":     pdf_data.get("raw_text_lines", []),
+        "pdf_clean_lines":   pdf_data.get("text_lines", []),
+        "pdf_noise_removed": pdf_data.get("noise_removed", []),   # [{"line": str, "motivo": str}]
+        "pdf_measure_lines": pdf_data.get("measure_lines", []),
+        "pdf_area_tags":     pdf_data.get("area_tags", []),
+        "pdf_items_confirmados": pdf_items,
+        "pdf_items_parciais":    partial_items,
+
+        "dxf_all_layers": dxf_data.get("all_layers", dxf_data.get("layers", [])),
+        "dxf_all_dims":   dxf_data.get("all_dims",   dxf_data.get("dims", [])),
+        "dxf_all_blocks": dxf_data.get("all_blocks", dxf_data.get("blocks", {})),
+        "dxf_all_texts":  dxf_data.get("all_texts",  dxf_data.get("texts", [])),
     }
 
     return JSONResponse({
@@ -305,6 +377,8 @@ async def ler_prancha(
 
     return JSONResponse({
         "leituras": leituras_por_stem,
+        "prompt_sent": prompt,
+        "raw_output":  raw_text,
         "metadata": {
             "tokens_input":  tokens_in,
             "tokens_output": tokens_out,
@@ -363,6 +437,8 @@ async def orquestrar(
         "fontes_primarias":     parsed.get("fontes_primarias", {}),
         "pranchas_para_detalhar": parsed.get("pranchas_para_detalhar", []),
         "pranchas_dispensadas":   parsed.get("pranchas_dispensadas", []),
+        "prompt_sent": prompt,
+        "raw_output":  raw_text,
         "metadata": {
             "tokens_input":  tokens_in,
             "tokens_output": tokens_out,
@@ -441,6 +517,8 @@ async def analisar_batch(
         "batched": batched,
         "divergencias": parsed.get("divergencias", []),
         "erros_limitacoes": parsed.get("erros_limitacoes", []),
+        "prompt_sent": prompt,
+        "raw_output":  raw_text,
         "metadata": {
             "tokens_input":  tokens_in,
             "tokens_output": tokens_out,
@@ -469,7 +547,15 @@ async def extrair(image: UploadFile = File(...)):
     classificacao = classify_prancha(pdf_data, dxf_data)
     log.info("  Classificacao: %s", classificacao)
 
-    pdf_items = parse_cea_qnt_tables(pdf_data) if pdf_data["ok"] else []
+    # Parser baseado em seções de texto — resolve bleed, duplicatas e soleiras
+    pdf_items = parse_cea_qnt_from_text(pdf_data) if pdf_data["ok"] else []
+    if pdf_data["ok"] and not pdf_items:
+        pdf_items = parse_cea_qnt_tables(pdf_data)
+    if pdf_data["ok"]:
+        seen_qa = {it.get("descricao", "") for it in pdf_items}
+        special_items = parse_special_tables_from_text(pdf_data, seen_qa)
+        if special_items:
+            pdf_items = pdf_items + special_items
     log.info("  Itens pre-extraidos do PDF: %d", len(pdf_items))
 
     has_context = pdf_data["ok"] or dxf_data["ok"]

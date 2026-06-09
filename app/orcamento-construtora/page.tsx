@@ -54,6 +54,7 @@ function OrcamentoInner() {
     extractResults, setExtractResults,
     leituraMap, setLeituraMap,
     orchResult, setOrchResult,
+    batchResults, setBatchResults,
     folha, setFolha,
     resultado, setResultado,
     tokenLogs, setTokenLogs,
@@ -178,9 +179,13 @@ function OrcamentoInner() {
               extractResults={extractResults}
               existingLeituraMap={leituraMap}
               existingOrchResult={orchResult}
+              existingBatchResults={batchResults}
+              existingFinalFolha={folha}
+              onBatchResultsChange={setBatchResults}
               onDone={(folha, orch, leitura, logs) => {
                 setLeituraMap(leitura);
                 setOrchResult(orch);
+                setBatchResults([]);
                 setFolha(folha);
                 setTokenLogs((prev) => [...prev, ...logs]);
                 setStep(4);

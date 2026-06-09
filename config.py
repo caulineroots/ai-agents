@@ -88,9 +88,11 @@ _MATERIAL_KEYWORDS = re.compile(
 
 
 def normalize_key(desc: str) -> str:
-    """Chave de deduplicação: primeiros 40 chars normalizados (remove ' / ')."""
+    """Chave de deduplicação: primeiros 80 chars normalizados (remove ' / ').
+    BUG-321-B: 60 colide para FORRO NEVE vs MENINA (mesma base até pos 68) — estendido para 80.
+    """
     s = re.sub(r"\s*/\s*", " ", desc)
-    return re.sub(r"\s+", " ", s.strip().upper())[:40]
+    return re.sub(r"\s+", " ", s.strip().upper())[:80]
 
 
 def guess_categoria(descricao: str) -> str:

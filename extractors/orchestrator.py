@@ -208,6 +208,26 @@ def build_batch_prompt(
             if escopo_prob else "  (sem proibições específicas)"
         )
 
+        # Texto limpo do PDF — enviado apenas quando a extração por código foi fraca (< 5 confirmados).
+        # Permite que a IA leia tabelas (Quadro de Áreas, Quadro de Luminárias, etc.)
+        # diretamente do texto, sem depender da resolução da imagem comprimida.
+        pdf_clean_lines = item.get("pdf_clean_lines")
+        if pdf_clean_lines:
+            pdf_text_str = "\n".join(pdf_clean_lines)
+            pdf_section = f"""
+TEXTO EXTRAÍDO DO PDF (use para ler tabelas se a imagem estiver ilegível):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{pdf_text_str}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INSTRUÇÕES PARA USO DO TEXTO PDF:
+- Se encontrar valores numéricos (m², un, ml) em tabelas do texto que não estão nos itens acima,
+  extraia-os com fonte="PDF" e confianca 80-95.
+- Se o texto confirmar uma quantidade que já está como "aguardando" (qty=0), preencha com fonte="PDF".
+- Prefira o texto para dados de tabelas; prefira a imagem para contagem visual e layout.
+"""
+        else:
+            pdf_section = ""
+
         prancha_ctx.append(f"""
 [PRANCHA {label}] — stem: {item['stem']}
 Resumo da leitura geral: {resumo_leitura or '(sem resumo)'}
@@ -220,7 +240,7 @@ ITENS ENCONTRADOS SEM QUANTIDADE — PREENCHA VISUALMENTE ({len(aguardando)}):
 
 COTAS DE ALTURA:
 {hctx_str}
-
+{pdf_section}
 ESCOPO PERMITIDO para esta prancha (o que você DEVE extrair):
 {escopo_perm_str}
 
@@ -245,6 +265,16 @@ DADOS EXTRAÍDOS POR CÓDIGO + CONTEXTO DA LEITURA GERAL:
 {prancha_section}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ANTES DE QUALQUER COISA — FILTRO DE LIXO:
+Ignore completamente (não retorne no JSON) qualquer item "aguardando" cuja descrição seja:
+- Texto de nota técnica ou regulamento (ex: contém "NÃO PODERÃO SOFRER", "HAVENDO NECESSIDADE",
+  "VERIFICAR NO LOCAL", "SERÁ OBRIGATÓRIO", "ACOMPANHAMENTO DO MESMO")
+- Metadado de metragem/legenda (ex: "METRAGEM LINEAR TOTAL", "ALTURA PISO - FORRO MALL",
+  "AFASTAMENTO TAPUME x RODATETO")
+- Qualquer texto que claramente não é um material ou serviço de construção
+Esses textos são artefatos de extração de PDF — descarte-os silenciosamente.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 SUAS TAREFAS — em ordem de prioridade:
 
 1. RESPONDER AS PERGUNTAS DO ORQUESTRADOR:
