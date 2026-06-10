@@ -52,3 +52,14 @@ uploads/
 
 # dados pessoais / memória do agente
 brain/
+
+# fixtures de projeto (grandes binários DWG/PDF/PNG — mantidos em disco, fora do git)
+celmar-files/
+
+# saídas de teste regeneráveis
+/test-results/
+/playwright-report/
+*_last_response.json
+leitura_last_response.json
+orchestrator_last_response.json
+batch_last_response.json
