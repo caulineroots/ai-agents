@@ -8,7 +8,7 @@ items that need a human. No LLM.
 Fill the **original** `*.xlsx` (a copy of it) in place, using `row_ref` captured at parse
 time, with `openpyxl`:
 
-- `QDE` ← `medida.valor` for `encontrado` items (the 121 that lacked a measure).
+- `QDE` ← `medida.valor` for `encontrado` items (the 115 that lacked a measure).
 - `MAT.` / `M.OBRA` / `TOTAL` ← `preco` (per the MAT/M.OBRA decision in [`05`](05-verificacao-precificacao.md)).
 - `divergente` items: **keep** the original `QDE`; do not overwrite. The divergence lives in
   the audit report and the UI, not in the cell.
@@ -37,7 +37,7 @@ back to a table cell or a DXF layer.
 
 ## Human-in-the-loop — on exceptions only
 
-The reviewer is shown a **work-list of flagged lines**, not all 233:
+The reviewer is shown a **work-list of flagged lines**, not all 227:
 
 | Flag / status | Why it surfaces | Reviewer action |
 |---|---|---|

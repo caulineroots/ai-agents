@@ -1,6 +1,6 @@
 # 03 · Phase 1 — Classification
 
-A cheap, fast LLM pass that tags every one of the ~233 line items with **how it should be
+A cheap, fast LLM pass that tags every one of the 227 line items with **how it should be
 measured** and **where to look**. No tools, no images — pure text reasoning over the line
 descriptions plus the Phase-0 project map. Batched (~25 items per call).
 
@@ -41,7 +41,7 @@ semantic classification. No regex survives across projects.
 The ~30 `vb.` lines plus the `dia`/`mês` admin lines classify as `LUMP_SUM`/`TIME` and get
 `needs_drawing: false` — they **skip measurement entirely** and go straight to pricing. The
 drawing-measurement effort then concentrates on the `m²`/`m`/`ml`/`m³` and countable `unid`
-items, a fraction of the 233. We never again try to "measure" a line that was never a
+items, a fraction of the 227. We never again try to "measure" a line that was never a
 drawing quantity.
 
 ## Unit normalization

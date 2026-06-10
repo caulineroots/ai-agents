@@ -7,7 +7,7 @@ deterministic.
 
 ## 0a · Spreadsheet parser (`parse-planilha`)
 
-Produces the `LineItem[]` backbone — the 233 leaf items for `254_BLN`.
+Produces the `LineItem[]` backbone — 227 priceable items for `254_BLN`.
 
 **Structure varies per project**, so positions are **detected, never hardcoded**:
 
@@ -25,9 +25,15 @@ Output per item: `{ item, cc, descricao, unidade_raw, qde_inicial, row_ref }`.
 
 **Library:** `openpyxl` (read + later write-back preserving formatting).
 
-### Verifiable target
-Running the parser on `254_BLN_Planilha Civil.xlsx` must yield **233 leaf items**, of which
-**112 have `qde_inicial > 0`** and **121 do not**. This is milestone 1's acceptance test.
+### Verifiable target — ✅ implemented (M1)
+Running the parser on `254_BLN_Planilha Civil.xlsx` yields **227 priceable items**, of which
+**112 have `qde_inicial > 0`** and **115 do not**, plus **6 empty numbered placeholder rows**
+(the "25 OMISSOS" reserve block + one blank line) that are *reported* (`n_linhas_vazias`) but
+excluded from scope. The header is detected by content (split across two rows here, at row 31),
+and `row_ref` is captured per item. Covered by `tests/test_planilha_parser.py`.
+
+> Note: an earlier rough probe reported "233 leaf rows" — it over-counted by including those
+> 6 empty placeholder rows. 227 is the real count of priceable line items.
 
 ## 0b · Drawing evidence pool
 

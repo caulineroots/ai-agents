@@ -74,9 +74,11 @@ Cross-cutting:
 
 Measured against `celmar-files/Projetos inicial/` and `254_BLN_Planilha Civil.xlsx`:
 
-- **Spreadsheet:** 233 leaf line items. **112 already have a quantity** (→ verify), **121
-  do not** (→ find). Units: `unid` 86, `m²` 66, `vb.` 30, `m` 16, `ml` 7, `m3` 1, plus
-  admin (`dia`/`mês`). The ~30 `vb.`/admin lines need *pricing only*, no drawing.
+- **Spreadsheet:** **227 priceable line items** (parsed). **112 already have a quantity**
+  (→ verify), **115 do not** (→ find). A further **6 numbered rows are empty placeholders**
+  (the "25 OMISSOS" reserve block + one blank line) — reported by the parser, excluded from
+  scope. Units: `unid` 86, `m²` 66, `vb.` 30, `m` 16, `ml` 7, `m3` 1, plus admin (`dia`/`mês`).
+  The ~30 `vb.`/admin lines need *pricing only*, no drawing.
 - **Drawings:** 38 PDFs, a DWG for ~every sheet (27 current + an `Old/` set), 27 PNGs.
 - **Stated-tier coverage:** 50 CEA-QNT tables across **20/38** PDFs, 182 area tags, 1191
   measure lines. Core civil/piso/forro/copa/sanitários/provadores sheets *have* tables;

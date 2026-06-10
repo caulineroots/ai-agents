@@ -29,6 +29,7 @@ from extractors.pdf_extractor import (
     extract_pdf, parse_cea_qnt_tables, extract_partial_items_from_text,
     parse_cea_qnt_from_text, parse_special_tables_from_text,
 )
+from extractors.planilha_parser import parse_planilha
 from extractors.dxf_extractor import extract_dxf
 from extractors.image_processor import compress_to_jpeg
 from extractors.context_builder import classify_prancha, build_context, build_prompt, PROMPT_NO_CONTEXT
@@ -99,6 +100,39 @@ def _score_prancha(pdf: dict, dxf: dict) -> int:
             score += min(len(dxf["blocks"]) // 10, 2)
         if len(dxf["layers"]) >= 20: score += 1
     return score
+
+
+@app.post("/parse-planilha")
+async def parse_planilha_endpoint(planilha: UploadFile = File(...)):
+    """
+    Fase 0a — lê a planilha orçamentária inicial (.xlsx) e retorna a lista de
+    itens de linha (escopo do orçamento). Detecta o cabeçalho por conteúdo;
+    não chama IA. Ver docs/arquitetura/02-ingestao.md.
+    """
+    fname = planilha.filename or "planilha.xlsx"
+    if not fname.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="Envie um arquivo .xlsx")
+    log.info("[parse-planilha] %s", fname)
+
+    try:
+        raw = await planilha.read()
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tf:
+            tf.write(raw)
+            tmp = tf.name
+        res = parse_planilha(tmp)
+        os.unlink(tmp)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao ler planilha: {e}")
+
+    if not res["ok"]:
+        raise HTTPException(
+            status_code=422,
+            detail="; ".join(res["erros"]) or "Cabeçalho de detalhe não encontrado na planilha",
+        )
+
+    res["arquivo"] = fname
+    res["processado_em"] = datetime.now(timezone.utc).isoformat()
+    return JSONResponse(res)
 
 
 @app.post("/extrair-codigo")

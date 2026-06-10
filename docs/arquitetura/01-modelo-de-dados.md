@@ -18,7 +18,7 @@ interface LineItem {
   cc: string;              // cost-center code, e.g. "810021"
   descricao: string;       // free-text description as written
   unidade_raw: string;     // unit as written ("unid", "vb.", "m", "m²"…)
-  qde_inicial: number | null;  // present on 112/233 items; null/0 otherwise
+  qde_inicial: number | null;  // present on 112/227 items; null/0 otherwise
   row_ref: number;         // 1-based row in the sheet — for write-back w/ formatting
 
   // ── Assigned by the Classifier (Phase 1, LLM) ─────────────────────────────

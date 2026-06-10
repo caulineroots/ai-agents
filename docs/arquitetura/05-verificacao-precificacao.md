@@ -4,7 +4,7 @@
 
 Splits on whether the spreadsheet already carried a measure.
 
-### Items that HAD `qde_inicial` (112/233) — verify & flag
+### Items that HAD `qde_inicial` (112/227) — verify & flag
 
 Compare the sheet's `qde_inicial` against the Medidor's `medida.valor`:
 
@@ -19,7 +19,7 @@ This is mostly deterministic; the LLM is invoked **only** to phrase the divergen
 > Open decision #3: the tolerance. A flat % (e.g. ±5%) is the simple default, but linear and
 > count items may warrant tighter bounds than area. Make it per-`estrategia` configurable.
 
-### Items that LACKED a measure (121/233) — find
+### Items that LACKED a measure (115/227) — find
 
 - Medidor resolved it → `status: "encontrado"` (carries `medida` + provenance).
 - Medidor failed (no table, no usable geometry, vision too uncertain) → `status: "manual"`,

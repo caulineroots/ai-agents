@@ -1,0 +1,24 @@
+# Serviço de extração (FastAPI) — orçamento construtora
+# Instalar:  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# API / serviço
+fastapi==0.136.3
+uvicorn==0.49.0
+python-multipart==0.0.32
+
+# extração de documentos
+pdfplumber==0.11.9      # tabelas/textos de PDF
+openpyxl==3.1.5         # planilha orçamentária inicial (.xlsx) + write-back
+pillow==12.2.0          # processamento de imagem
+
+# LLM
+anthropic==0.105.2
+pydantic==2.13.4
+
+# dev / testes
+pytest==9.0.3
+
+# ── Dependências planejadas (ainda não usadas — ver docs/arquitetura) ──
+# ezdxf            # geometria DXF (M4): áreas de hatch, comprimentos, contagem de blocos
+# shapely          # união/área de polígonos, dedup de sobreposição (M4)
+# pymupdf          # render de PDF -> imagem para fallback de visão

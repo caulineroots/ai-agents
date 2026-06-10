@@ -3,13 +3,18 @@
 Each milestone is independently shippable and verifiable against the real `254_BLN` project.
 Order is chosen so value lands early and risk is retired in sequence.
 
-## M1 · Spreadsheet backbone *(no LLM)*
-Build `parse-planilha` + the `LineItem` model, and wire `.xlsx` into the upload step.
+## M1 · Spreadsheet backbone *(no LLM)* — ✅ DONE
+Build `parse-planilha` + the `LineItem` model, and expose it via the service.
 
-- **Deliverable:** upload `254_BLN_Planilha Civil.xlsx` → structured list of line items.
-- **Acceptance:** 233 leaf items; 112 with `qde_inicial > 0`, 121 without; header detected
-  by content (not hardcoded position); `row_ref` captured for each.
-- **Why first:** it's the backbone everything hangs off, and it's checkable immediately.
+- **Deliverable:** `extractors/planilha_parser.py` + `LineItem`/`PlanilhaParseResult`
+  schemas + `POST /parse-planilha` endpoint. Upload `*.xlsx` → structured line-item list.
+- **Acceptance (met):** 227 priceable items; 112 with `qde_inicial > 0`, 115 without; 6
+  empty placeholder rows reported (not dropped silently); header detected by content (split
+  across rows 30–31, not hardcoded); `row_ref` captured per item. Covered by
+  `tests/test_planilha_parser.py` (6 tests, green).
+- **Still open in M1:** frontend wiring — extend `StepUpload` `ACCEPTED` with `.xlsx` and add
+  a spreadsheet slot that calls `/parse-planilha` and renders the line-item list.
+- **New dependency:** `openpyxl` (no `requirements.txt` exists yet — see roadmap note).
 
 ## M2 · Orientation + classification
 Project Mapper (Phase 0c) + Classifier (Phase 1).
