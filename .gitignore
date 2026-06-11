@@ -1,6 +1,9 @@
+# Monorepo: next-app/ (Next) + worker/ (Python). Padrões sem barra inicial
+# para casar em qualquer subpasta.
+
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -8,14 +11,14 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
@@ -60,8 +63,8 @@ celmar-files/
 storage/
 
 # saídas de teste regeneráveis
-/test-results/
-/playwright-report/
+test-results/
+playwright-report/
 *_last_response.json
 leitura_last_response.json
 orchestrator_last_response.json

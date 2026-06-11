@@ -31,11 +31,11 @@ request timeout (the worker isn't on the HTTP path).
 
 | Piece | Where | Role |
 |---|---|---|
-| Postgres | Docker (`docker-compose.yml`, host `:5433`) | the `jobs` table — source of truth |
-| Drizzle | `db/schema.ts`, `db/index.ts` | schema + typed client (TS side only) |
-| Job API | `app/api/orcamento-construtora/jobs/**` | create/list/detail/claim/update/download |
-| Worker | `worker.py` | claims → runs `extractors/pipeline.processar` → reports |
-| UI | `app/orcamento-construtora/{page,jobs}` | upload→job, list, detail (all polling) |
+| Postgres | Docker (`next-app/docker-compose.yml`, host `:5433`) | the `jobs` table — source of truth |
+| Drizzle | `next-app/db/{schema,index}.ts` | schema + typed client (TS side only) |
+| Job API | `next-app/app/api/orcamento-construtora/jobs/**` | create/list/detail/claim/update/download |
+| Worker | `worker/worker.py` | claims → runs `extractors/pipeline.processar` → reports |
+| UI | `next-app/app/orcamento-construtora/{page,jobs}` | upload→job, list, detail (all polling) |
 
 The worker **never touches the DB** — it only calls the Next API. Drizzle/Postgres stay
 entirely on the Next side, exactly one owner of the schema.
@@ -66,20 +66,25 @@ multiple workers can run safely; none grab the same job.
 
 ## Running it locally
 
+The repo is split into `next-app/` (web + DB) and `worker/` (Python). See the root
+[`README.md`](../../README.md) for the full first-time setup.
+
 ```bash
-# 1. database
-docker compose up -d                      # postgres on :5433 (persistent volume)
-npx drizzle-kit push                       # apply the schema (first time / after changes)
+# terminal 1 — DB + web (in next-app/)
+cd next-app
+docker compose up -d            # or npm run db:up   (postgres on :5433, persistent volume)
+npm run db:push                 # apply schema (first time / after changes)
+npm run dev                     # Next on :3000
 
-# 2. web app
-npm run dev                                # Next on :3000
-
-# 3. worker (separate terminal) — does the actual processing
-.venv/bin/python worker.py                 # polls :3000, runs the pipeline
+# terminal 2 — worker (in worker/)
+cd worker
+.venv/bin/python worker.py      # polls :3000, runs the pipeline
 ```
 
-Env (`.env.local`): `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ORCAMENTO_API_URL`
-(default `http://localhost:3000`), `WORKER_POLL_SECONDS` (default 3).
+Env is per folder: `next-app/.env.local` (`DATABASE_URL`, `ANTHROPIC_API_KEY`,
+`EXTRACTOR_*` paths to the worker's service) and `worker/.env.local`
+(`ANTHROPIC_API_KEY`, `ORCAMENTO_API_URL` default `http://localhost:3000`,
+`WORKER_POLL_SECONDS` default 3).
 
 Then open `http://localhost:3000/orcamento-construtora`, upload, and watch the job on the
 list / detail pages. Run more than one `worker.py` to process jobs in parallel.

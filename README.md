@@ -1,172 +1,56 @@
-# Sistema de Orçamento Automatizado — Celmar
+# Orçamento Construtora
 
-Geração automática de pré-orçamentos a partir de pranchas de projeto (PDF, DXF, PNG).  
-O sistema extrai dados por código, envia imagens para IA em 3 estágios e apresenta o orçamento para revisão humana.
+Geração de orçamento a partir da **planilha inicial do cliente** (define o escopo) + os
+desenhos do projeto (PDF/DWG/DXF). Para cada item de linha o sistema **mede** nos desenhos
+(verifica os que já têm medida, encontra os que faltam — com provenance: tabela > geometria
+> estimativa), **precifica** contra `precos.json` e devolve a planilha preenchida, com uma
+lista do que precisa de revisão humana. O processamento roda como **job assíncrono**.
 
----
+Arquitetura detalhada: [`docs/arquitetura/`](docs/arquitetura/README.md).
+
+## Estrutura (monorepo)
+
+```
+ai-agents/
+  next-app/   # aplicação Next.js: UI + API de jobs + banco (Drizzle/Postgres)
+  worker/     # backend Python: pipeline de medição + worker da fila + serviço aprender
+  docs/       # arquitetura e decisões
+```
+
+- **next-app** — dono do banco (fila de jobs), salva uploads, expõe a API e a UI.
+- **worker** — faz o trabalho pesado (extração, medição, IA, precificação). Fala só HTTP
+  com o Next; nunca acessa o banco direto.
 
 ## Pré-requisitos
+Node 18+, Python 3.10+, Docker (Postgres), e uma `ANTHROPIC_API_KEY` (para o modo IA).
 
-| Ferramenta | Versão mínima |
-|---|---|
-| Node.js | 18+ |
-| Python | 3.10+ |
-| pip packages | `pdfplumber`, `ezdxf`, `Pillow`, `fastapi`, `uvicorn`, `anthropic` |
+## Como rodar (local)
 
+**1. Banco + app web** (terminal 1, em `next-app/`):
 ```bash
-pip install pdfplumber ezdxf Pillow fastapi uvicorn anthropic
-```
-
----
-
-## Iniciar o projeto
-
-```bash
-# Na pasta AI-Agents
+cd next-app
+cp .env.local.example .env.local      # preencha ANTHROPIC_API_KEY e os caminhos do worker
 npm install
-npm run dev
+docker compose up -d                  # Postgres em :5433   (ou: npm run db:up)
+npm run db:push                        # aplica o schema (primeira vez / após mudanças)
+npm run dev                            # Next em :3000
 ```
 
-Acesse **http://localhost:3000/orcamento-construtora**
-
-> O serviço Python (FastAPI na porta 8000) sobe automaticamente na primeira chamada.
-
----
-
-## Variáveis de ambiente
-
-Crie um arquivo `.env.local` na raiz do projeto:
-
-```env
-ANTHROPIC_API_KEY=sk-ant-api03-...
-EXTRACTOR_SERVICE_URL=http://localhost:8000
+**2. Worker** (terminal 2, em `worker/`):
+```bash
+cd worker
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # primeira vez
+cp .env.local.example .env.local      # preencha ANTHROPIC_API_KEY
+.venv/bin/python worker.py            # faz polling do Next e processa os jobs
 ```
 
----
+Abra `http://localhost:3000/orcamento-construtora`, envie a planilha + desenhos, e acompanhe
+o job nas páginas de lista/detalhe. Rode mais de um `worker.py` para processar em paralelo.
 
-## Fluxo de uso
+> Conversão DWG→DXF (modo geometria) precisa de `dwg2dxf` (LibreDWG) ou ODA File Converter
+> no PATH — veja `worker/requirements.txt`.
 
-### Passo 1 — Upload das Pranchas
-
-1. Arraste ou selecione **todos** os arquivos do projeto: PNG, PDF e DXF/DWG.
-2. O sistema agrupa os arquivos por prancha (stem do nome).
-3. Verifique na tabela se cada prancha tem PNG, PDF e DXF marcados.
-4. Clique em **Próximo**.
-
-> Os arquivos precisam ter o **mesmo nome base** para serem agrupados automaticamente.
-> Exemplo: `CEA-254-BLN-01.png`, `CEA-254-BLN-01.pdf` e `CEA-254-BLN-01.dxf` viram uma única prancha.
-
----
-
-### Passo 2 — Extração por Código
-
-Clique em **Extrair por Código**.
-
-O sistema lê os arquivos que você enviou no Passo 1:
-- **PDF**: tabelas `CEA-QNT`, quadros de acabamentos, cotas de altura
-- **DXF**: blocos, layers e textos com keywords de material
-
-Resultado: lista de itens com quantidade (confirmados) e itens parciais sem quantidade (aguardando IA).
-
-> Esta etapa não usa IA e não tem custo de tokens.
-
----
-
-### Passo 3 — Análise IA (3 estágios)
-
-#### Estágio 1 — Leitura Geral
-- Envia **todas** as pranchas em batches de 6 imagens.
-- A IA lê o projeto inteiro, documenta contexto e relevância de cada prancha.
-- Clique em **Rodar Leitura Geral** e aguarde.
-
-#### Estágio 2 — Orquestrador
-- A IA analisa o mapa gerado no Estágio 1 + dados extraídos por código.
-- Identifica lacunas e define quais pranchas precisam de análise de detalhe.
-- Clique em **Rodar Orquestrador**.
-
-#### Estágio 3 — Batches de Detalhe
-- Envia batches de 3 imagens das pranchas priorizadas.
-- A IA confirma ou corrige quantidades e preenche itens sem quantidade.
-- Clique em **Rodar Batches de Detalhe**.
-
-> Custo estimado por projeto completo (27 pranchas): ~$2–3 USD em tokens.
-
----
-
-### Passo 4 — Revisão do Orçamento
-
-A tabela apresenta todos os itens agrupados por ambiente com:
-
-| Campo | Descrição |
-|---|---|
-| Confirmado (verde) | Item com quantidade extraída do PDF/DXF |
-| Estimativa (azul) | Quantidade definida pela IA |
-| Não identificado (vermelho) | Item sem quantidade e sem preço mapeado |
-
-**Ações disponíveis:**
-- Editar quantidade ou preço de qualquer item
-- Adicionar item manualmente
-- Remover item
-- Ajustar **% de Mobilização** (campo no topo do orçamento)
-
----
-
-### Salvar e Importar Sessão
-
-- **Salvar**: botão "Exportar Sessão" gera um arquivo `.json` com todos os dados.
-- **Importar**: carregue o `.json` para retomar exatamente onde parou (inclui imagens via IndexedDB).
-
-> As imagens ficam salvas no navegador (IndexedDB). Se mudar de navegador ou limpar o cache, será necessário re-enviar os arquivos no Passo 1 antes de rodar a IA novamente.
-
----
-
-## Estrutura do projeto
-
+## Testes
+```bash
+cd worker && .venv/bin/python -m pytest -q     # 48 testes do pipeline
 ```
-AI-Agents/
-├── app/
-│   ├── api/orcamento-construtora/   # Rotas Next.js → proxy Python
-│   └── orcamento-construtora/       # Frontend (páginas e componentes)
-├── hooks/
-│   └── useOrcamentoSession.ts       # Estado global da sessão
-├── lib/orcamento-construtora/       # Lógica de cálculo, tipos, image-store
-├── extractors/
-│   ├── pdf_extractor.py             # Extração de texto e tabelas de PDF
-│   ├── dxf_extractor.py             # Extração de blocos e layers de DXF
-│   ├── orchestrator.py              # Prompts dos 3 estágios de IA
-│   └── ai_client.py                 # Cliente Anthropic
-├── extractor_service.py             # FastAPI — endpoints do serviço Python
-├── config.py                        # Tabela de preços e keywords de material
-└── nomenclaturas_db.json            # Banco de nomenclaturas aprendidas
-```
-
----
-
-## Banco de Preços
-
-Os preços estão em `config.py` → `TABELA_CELMAR`.  
-Para adicionar ou corrigir um preço, edite o dicionário diretamente:
-
-```python
-"RODAPE ACO INOX 100MM": {"preco": 180.0, "unidade": "ml"},
-```
-
----
-
-## Aprendizado de Nomenclaturas
-
-Acesse **/orcamento-construtora/aprender** para:
-1. Enviar um projeto e identificar itens não mapeados.
-2. Chamar a IA para sugerir mapeamentos.
-3. Aprovar e salvar no `nomenclaturas_db.json`.
-
----
-
-## Troubleshooting
-
-| Problema | Solução |
-|---|---|
-| Serviço Python não responde | Verifique se o Python está instalado e os pacotes instalados via `pip` |
-| "Failed to fetch" no Orquestrador | Checar `ANTHROPIC_API_KEY` no `.env.local` |
-| Orçamento não recalcula ao importar | Reabra a sessão e aguarde 2–3 segundos |
-| Muitos "não identificados" | Rode novamente o Passo 2 (Extrair por Código) após qualquer atualização do extrator |
