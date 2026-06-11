@@ -1,0 +1,20 @@
+# Python backend
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# env
+.env*.local
+.env
+
+# fixtures de projeto (grandes binários DWG/PDF/PNG)
+celmar-files/
+
+# respostas raw de debug da IA
+*_last_response.json
+
+.DS_Store

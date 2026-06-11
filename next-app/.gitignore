@@ -1,0 +1,24 @@
+# Next.js app
+node_modules/
+.next/
+out/
+build/
+.vercel/
+
+# env
+.env*.local
+.env
+
+# typescript / build
+*.tsbuildinfo
+next-env.d.ts
+
+# runtime (uploads + planilhas preenchidas por job)
+storage/
+
+# testes
+test-results/
+playwright-report/
+coverage/
+
+.DS_Store
