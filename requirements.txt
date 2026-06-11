@@ -10,6 +10,8 @@ python-multipart==0.0.32
 pdfplumber==0.11.9      # tabelas/textos de PDF
 openpyxl==3.1.5         # planilha orçamentária inicial (.xlsx) + write-back
 pillow==12.2.0          # processamento de imagem
+ezdxf==1.4.4            # geometria DXF (camada computed): hatch/polilinha/blocos/cotas
+shapely==2.1.2          # áreas/união de polígonos, dedup de sobreposição
 
 # LLM
 anthropic==0.105.2
@@ -18,7 +20,9 @@ pydantic==2.13.4
 # dev / testes
 pytest==9.0.3
 
+# Conversão DWG->DXF (camada computed): instalar fora do pip —
+#   LibreDWG (dwg2dxf):  brew install libredwg
+#   ou ODA File Converter (gratuito): https://www.opendesign.com/guestfiles/oda_file_converter
+
 # ── Dependências planejadas (ainda não usadas — ver docs/arquitetura) ──
-# ezdxf            # geometria DXF (M4): áreas de hatch, comprimentos, contagem de blocos
-# shapely          # união/área de polígonos, dedup de sobreposição (M4)
-# pymupdf          # render de PDF -> imagem para fallback de visão
+# pymupdf          # render de PDF -> imagem para fallback de visão (M-vision)
