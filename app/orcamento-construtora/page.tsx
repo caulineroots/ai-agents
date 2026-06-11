@@ -1,231 +1,182 @@
 'use client';
 
-import Link from 'next/link';
-import { Component, type ReactNode, useCallback, useEffect } from 'react';
-import { calcularOrcamento }        from '@/lib/orcamento-construtora/calcular';
-import { imageStore }               from '@/lib/orcamento-construtora/image-store';
-import { saveGroupsToIDB, restoreGroupsFromIDB } from '@/lib/orcamento-construtora/image-db';
-import { useOrcamentoSession }      from '@/hooks/useOrcamentoSession';
-import { Stepper }              from './components/Stepper';
-import { StepUpload }           from './components/StepUpload';
-import { StepExtract }          from './components/StepExtract';
-import { StepIA }               from './components/StepIA';
-import { StepReview }           from './components/StepReview';
-import { StepOrcamento }        from './components/StepOrcamento';
+import { useState } from 'react';
 
-// ─── Error Boundary ───────────────────────────────────────────────────────────
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(err: Error, info: { componentStack: string }) {
-    console.error('[OrcamentoCrash]', err.message, info.componentStack);
-  }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
-          <div className="bg-white rounded-2xl shadow border border-red-100 p-8 max-w-xl w-full space-y-4">
-            <h2 className="text-lg font-bold text-red-700">Erro ao renderizar</h2>
-            <pre className="text-xs text-red-600 bg-red-50 rounded p-4 overflow-auto whitespace-pre-wrap">
-              {this.state.error.message}{'\n\n'}{this.state.error.stack?.slice(0, 600)}
-            </pre>
-            <button
-              onClick={() => { try { localStorage.clear(); } catch {} window.location.reload(); }}
-              className="w-full py-2.5 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700"
-            >
-              Limpar sessão e recarregar
-            </button>
-          </div>
-        </div>
-      );
+type Resumo = {
+  n_itens: number;
+  por_status: Record<string, number>;
+  n_para_revisao: number;
+  total_orcado: number;
+};
+type LinhaRel = {
+  item: string; descricao: string; status: string; qde_final: number | null;
+  unidade: string | null; metodo: string | null; fonte: string | null;
+  confianca: number | null; preco_total: number | null; flags: string[];
+};
+type Resultado = {
+  ok: boolean; arquivo: string; n_pranchas: number; use_llm: boolean;
+  resumo: Resumo; work_list: LinhaRel[]; planilha_preenchida_b64: string;
+};
+
+const STATUS_COR: Record<string, string> = {
+  confirmado: 'bg-emerald-500/15 text-emerald-300',
+  encontrado: 'bg-sky-500/15 text-sky-300',
+  divergente: 'bg-amber-500/15 text-amber-300',
+  manual: 'bg-rose-500/15 text-rose-300',
+  lump_sum: 'bg-zinc-500/15 text-zinc-300',
+  nota: 'bg-zinc-700/30 text-zinc-400',
+};
+
+const brl = (n: number) =>
+  n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export default function PlanilhaPage() {
+  const [planilha, setPlanilha] = useState<File | null>(null);
+  const [desenhos, setDesenhos] = useState<File[]>([]);
+  const [useLlm, setUseLlm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [res, setRes] = useState<Resultado | null>(null);
+
+  async function run() {
+    if (!planilha) { setErro('Selecione a planilha (.xlsx).'); return; }
+    setErro(null); setLoading(true); setRes(null);
+    try {
+      const fd = new FormData();
+      fd.append('planilha', planilha);
+      desenhos.forEach((d) => fd.append('desenhos', d));
+      fd.append('use_llm', String(useLlm));
+      const r = await fetch('/api/orcamento-construtora/processar', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || 'Falha ao processar');
+      setRes(j);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
     }
-    return this.props.children;
   }
-}
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-function OrcamentoInner() {
-  const {
-    step, setStep,
-    stems, setGroups,
-    extractResults, setExtractResults,
-    leituraMap, setLeituraMap,
-    orchResult, setOrchResult,
-    batchResults, setBatchResults,
-    folha, setFolha,
-    resultado, setResultado,
-    tokenLogs, setTokenLogs,
-    restoredAt,
-    accessible,
-    handleUpdate,
-    reset,
-    exportSession,
-    handleImport,
-  } = useOrcamentoSession();
-
-  // Sempre que folha mudar (import ou fluxo normal), recalcula com o código atual
-  useEffect(() => {
-    if (folha) setResultado(calcularOrcamento(folha));
-  }, [folha]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Após import de sessão: restaura imagens do IndexedDB pelo stem
-  const handleImportWithRestore = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    await handleImport(e);
-    // Aguarda o estado atualizar (stems vem do extractResults após o import)
-    setTimeout(async () => {
-      const currentStems = imageStore.stems();
-      if (currentStems.length > 0) return; // imagens já estão na memória
-
-      // Pega stems dos extractResults (já atualizados pelo handleImport via localStorage)
-      const stored = (() => {
-        try { return JSON.parse(localStorage.getItem('orcamento-session') ?? '{}'); } catch { return {}; }
-      })();
-      const importedStems: string[] = (stored.extractResults ?? []).map((r: { stem: string }) => r.stem);
-      if (importedStems.length === 0) return;
-
-      const restored = await restoreGroupsFromIDB(importedStems);
-      if (restored.length > 0) {
-        imageStore.set(restored);
-        console.log(`[IDB] ${restored.length} grupos restaurados do IndexedDB`);
-      } else {
-        console.warn('[IDB] Nenhuma imagem encontrada no IndexedDB — arquivos precisam ser re-selecionados para análise IA');
-      }
-    }, 300);
-  }, [handleImport]);
+  function baixar() {
+    if (!res) return;
+    const bytes = Uint8Array.from(atob(res.planilha_preenchida_b64), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = res.arquivo.replace(/\.xlsx$/i, '') + ' - preenchida.xlsx';
+    a.click(); URL.revokeObjectURL(url);
+  }
 
   return (
-    <div className="h-screen overflow-y-auto bg-gray-50 py-12 px-4">
-      <div className={`mx-auto transition-all ${step === 4 ? 'w-full px-4' : 'max-w-3xl'}`}>
+    <div className="min-h-screen bg-[#0a0a0f] text-zinc-100 px-6 py-10">
+      <div className="max-w-5xl mx-auto space-y-8">
+        <header>
+          <h1 className="text-2xl font-semibold">Orçamento a partir da planilha</h1>
+          <p className="text-zinc-400 mt-1 text-sm">
+            A planilha inicial define o escopo. O sistema mede cada item nos desenhos
+            (verifica os que já têm medida, encontra os que faltam), precifica e devolve
+            a planilha preenchida — com a lista do que precisa de revisão humana.
+          </p>
+        </header>
 
-        {/* Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Orçamento Construtora</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Análise automática por IA do projeto executivo de fit-out
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-            <Link
-              href="/orcamento-construtora/aprender"
-              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-white text-purple-700 border-purple-200 hover:bg-purple-50"
-            >
-              Banco de Nomes
-            </Link>
-            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium cursor-pointer bg-white text-blue-600 border-blue-200 hover:bg-blue-50">
-              Importar
-              <input type="file" accept=".json" className="hidden" onChange={handleImportWithRestore} />
-            </label>
-            {(folha || resultado || extractResults.length > 0) && (
-              <button onClick={exportSession} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-green-600 text-white border-green-600 hover:bg-green-700">
-                Salvar sessão
-              </button>
-            )}
-            <button onClick={reset} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50">
-              Limpar
+        {/* Upload */}
+        <section className="grid gap-4 sm:grid-cols-2 bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium">Planilha inicial (.xlsx)</span>
+            <input type="file" accept=".xlsx,.xlsm"
+              onChange={(e) => setPlanilha(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-zinc-100" />
+            {planilha && <span className="text-xs text-emerald-400">{planilha.name}</span>}
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium">Desenhos (PDF / DWG / DXF)</span>
+            <input type="file" multiple accept=".pdf,.dwg,.dxf"
+              onChange={(e) => setDesenhos(Array.from(e.target.files ?? []))}
+              className="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-700 file:px-3 file:py-1.5 file:text-zinc-100" />
+            {desenhos.length > 0 && <span className="text-xs text-emerald-400">{desenhos.length} arquivo(s)</span>}
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input type="checkbox" checked={useLlm} onChange={(e) => setUseLlm(e.target.checked)} />
+            Usar IA na medição (desambiguação por ambiente; mais lento e com custo de API)
+          </label>
+          <div className="sm:col-span-2">
+            <button onClick={run} disabled={loading || !planilha}
+              className="rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 px-4 py-2 text-sm font-medium">
+              {loading ? 'Processando…' : 'Processar orçamento'}
             </button>
           </div>
-        </div>
+          {erro && <p className="sm:col-span-2 text-sm text-rose-400">{erro}</p>}
+        </section>
 
-        {restoredAt && (
-          <div className="mb-4 flex items-center justify-between gap-3 text-xs bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
-            <span className="text-blue-700">
-              Sessão restaurada — {new Date(restoredAt).toLocaleString('pt-BR')}
-            </span>
-            <button onClick={reset} className="text-blue-500 hover:text-blue-700 underline">Limpar</button>
-          </div>
+        {res && (
+          <>
+            {/* Resumo */}
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <div className="text-xs text-zinc-500 uppercase">Total orçado</div>
+                  <div className="text-3xl font-semibold text-emerald-400">{brl(res.resumo.total_orcado)}</div>
+                </div>
+                <button onClick={baixar}
+                  className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium">
+                  Baixar planilha preenchida
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(res.resumo.por_status).map(([s, n]) => (
+                  <span key={s} className={`rounded-md px-2.5 py-1 text-xs ${STATUS_COR[s] ?? 'bg-zinc-700/40'}`}>
+                    {s}: <strong>{n}</strong>
+                  </span>
+                ))}
+                <span className="rounded-md px-2.5 py-1 text-xs bg-zinc-800 text-zinc-300">
+                  {res.n_pranchas} pranchas · {res.use_llm ? 'IA on' : 'determinístico'}
+                </span>
+              </div>
+            </section>
+
+            {/* Work-list */}
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-zinc-300">
+                Revisão humana — {res.work_list.length} linha(s)
+              </h2>
+              <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                <table className="w-full text-sm">
+                  <thead className="bg-zinc-900/70 text-zinc-400 text-left">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Item</th>
+                      <th className="px-3 py-2 font-medium">Descrição</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Qtd</th>
+                      <th className="px-3 py-2 font-medium">Fonte</th>
+                      <th className="px-3 py-2 font-medium">Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/70">
+                    {res.work_list.map((l) => (
+                      <tr key={l.item} className="hover:bg-zinc-900/40">
+                        <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">{l.item}</td>
+                        <td className="px-3 py-2">{l.descricao}</td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_COR[l.status] ?? ''}`}>{l.status}</span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {l.qde_final != null ? `${l.qde_final} ${l.unidade ?? ''}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-zinc-500 max-w-xs truncate" title={l.fonte ?? ''}>
+                          {l.fonte ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-amber-300/80">{l.flags.join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
         )}
-
-        <Stepper current={step} accessible={accessible} onNavigate={setStep} />
-
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-
-          {/* Step 1: Upload */}
-          {step === 1 && (
-            <StepUpload
-              existingStems={stems}
-              onDone={(groups) => {
-                setGroups(groups);
-                // Persiste imagens no IndexedDB para uso após import de sessão
-                saveGroupsToIDB(groups).catch((err) =>
-                  console.warn('[IDB] Falha ao salvar imagens:', err)
-                );
-                setStep(2);
-              }}
-            />
-          )}
-
-          {/* Step 2: Extração por código */}
-          {step === 2 && (
-            <StepExtract
-              groups={imageStore.get()}
-              existingResults={extractResults}
-              onExtractDone={(results) => {
-                setExtractResults(results);
-              }}
-              onRunAI={() => setStep(3)}
-              onNavigate={setStep}
-              onExportSession={exportSession}
-            />
-          )}
-
-          {/* Step 3: IA — Leitura Geral + Orquestrador + Batches de Detalhe */}
-          {step === 3 && (
-            <StepIA
-              groups={imageStore.get()}
-              extractResults={extractResults}
-              existingLeituraMap={leituraMap}
-              existingOrchResult={orchResult}
-              existingBatchResults={batchResults}
-              existingFinalFolha={folha}
-              onBatchResultsChange={setBatchResults}
-              onDone={(folha, orch, leitura, logs) => {
-                setLeituraMap(leitura);
-                setOrchResult(orch);
-                setBatchResults([]);
-                setFolha(folha);
-                setTokenLogs((prev) => [...prev, ...logs]);
-                setStep(4);
-              }}
-            />
-          )}
-
-          {/* Step 4: Revisão */}
-          {step === 4 && folha && (
-            <StepReview
-              folha={folha}
-              imageBlobs={imageStore.get().filter((g) => extractResults.find((r) => r.stem === g.stem && r.precisa_ia)).map((g) => g.imageFile ?? new Blob())}
-              onDone={(updated) => {
-                setFolha(updated);
-                setResultado(calcularOrcamento(updated));
-                setStep(5);
-              }}
-            />
-          )}
-
-          {/* Step 5: Orçamento */}
-          {step === 5 && folha && resultado && (
-            <StepOrcamento
-              folha={folha}
-              resultado={resultado}
-              tokenLogs={tokenLogs}
-              onReset={reset}
-            />
-          )}
-
-        </div>
       </div>
     </div>
-  );
-}
-
-export default function OrcamentoConstutoraPage() {
-  return (
-    <ErrorBoundary>
-      <OrcamentoInner />
-    </ErrorBoundary>
   );
 }
