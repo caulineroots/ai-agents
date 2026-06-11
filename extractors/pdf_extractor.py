@@ -155,6 +155,95 @@ def classify_noise(line: str) -> str | None:
     return None
 
 
+# ── Filtro de LIXO no nível de ITEM (descrição final, não linha de texto) ─────
+# classify_noise() roda por linha DURANTE a extração de texto. Mas muitos itens
+# chegam à proposta por caminhos que não passam por ela (parsers de seção, tabelas
+# especiais, extração parcial, itens fabricados pela IA). Este filtro determinístico
+# roda sobre a DESCRIÇÃO final do item, no chokepoint, logo antes dela virar item de
+# orçamento — tornando a remoção de lixo independente do LLM.
+#
+# REGRA: nunca filtra por quantidade. Itens legítimos com qty 0 / R$ 0,00 são mantidos.
+# Os padrões abaixo (A–J) só atingem ruído estrutural — fragmentos de nota, carimbo de
+# prancha, códigos OCR, planilhas de área e fragmentos mutilados (duplicatas).
+
+_RE_J_NOTE_MARK    = re.compile(r"\b\d{1,2}\)\s")                          # A: "...Acima 22) OS FORROS..."
+_RE_J_NOTE_PHRASE  = re.compile(                                           # A: frases de nota técnica/regulamento
+    r"(N[ÃA]O\s+PODER[ÃA]O|HAVENDO\s+NECESSIDADE|ACOMPANHAMENTO\s+DO\s+MESMO|"
+    r"ENTREFORRO\s+TEM\s+ALTURA|CAIXAS\s+DE\s+PISO\s+DEVER[ÃA]O|"
+    r"N[ÃA]O\s+HAVER[ÁA]\s+COMPROMETIMENTO|EXPRESSAMENTE\s+PROIBIDO|"
+    r"OS\s+FORROS\s+QUANDO|FIXAR\s+BANCOS\s+DAS\s+CABINES|MELHOR\s+MANEIRA\s+DE\s+FIXA)",
+    re.IGNORECASE)
+_RE_J_TITLEBLOCK   = re.compile(                                           # B: carimbo / endereço da prancha
+    r"(CDA\s+DESIGN|JO[ÃA]O\s+BERUTTI|CH[ÁA]CARA\s+DAS\s+PEDRAS|BR-470|"
+    r"DESCRI[ÇC][ÃA]O\s+DAS\s+REVIS|N[ÚU]MERO\s+DATA\s+DESCRI|"
+    r"\+55\s|\b\d{4}\.\d{4}\b|\b\d{5}-\d{3}\b)",
+    re.IGNORECASE)
+_RE_J_GRID         = re.compile(r"([A-Z]{2,4}_\d{1,4}|\d{1,4}_Y[QC]A|_YQE|CV_\d{3,})", re.IGNORECASE)  # C
+_RE_J_NUMRUN       = re.compile(r"^(\d{1,4}([.,]\d+)?\s+){3,}")            # D: "147 406 147 ...", "64 64 644 64 ..."
+_RE_J_AREA_M2      = re.compile(r"\d+[.,]\d+\s*m²", re.IGNORECASE)         # E: planilha de áreas (≥3 ocorrências)
+_RE_J_DEPARTAMENTO = re.compile(r"^Departamento\b.*\b[áa]rea\s+de\s+vendas", re.IGNORECASE)  # E
+_RE_J_DIMENSOES    = re.compile(r"^Dimens[õo]es\s+(gerais|cabine)", re.IGNORECASE)           # E
+_RE_J_SHEET_REF    = re.compile(                                           # F: referências de desenho/folha
+    r"(\bESC\.?\s*:|AXONOM[EÉ]TRICA|VISTA\s+OBSERVADOR|^ARQ\s+[A-Z]|"
+    r"\bFOLHA\s+\d{2,3}\b|^\d{3}\s*[-–]\s|VERIFICAR\s+DETALHAMENTO)",
+    re.IGNORECASE)
+_RE_J_WALLLABEL    = re.compile(r"^PAREDE\s+P0\d\b", re.IGNORECASE)        # G: rótulo de elevação "PAREDE P02"
+# Borderline (itens que ganharam qty mas são fragmentos mutilados — quase sempre duplicatas):
+_RE_J_ORPHAN       = re.compile(r"^[A-Z]\s+[A-Z]")                         # H: "A ACRÍLICA...", "A LÁTEX..."
+_RE_J_TRUNC_STEM   = re.compile(r"^(MPERMEABILIZ|RGAMASSA|OLEIRA\s+GRANITO|ER[ÂA]MIC)", re.IGNORECASE)  # I
+_RE_J_TRAIL_RESID  = re.compile(r"(\d+[.,]\d+\s+\d+[.,]\d+\s*$|\bTOTAIS\s*:)")  # J: resíduo de coluna de tabela
+
+# (tag, pattern, mode) — mode: "search" | "match" | "count3" (≥3 ocorrências) | "count2" (≥2)
+_ITEM_JUNK_FILTERS: list = [
+    ("nota_marcador",  _RE_J_NOTE_MARK,    "search"),
+    ("nota_frase",     _RE_J_NOTE_PHRASE,  "search"),
+    ("carimbo_obra",   _RE_J_TITLEBLOCK,   "search"),
+    ("grid_ocr",       _RE_J_GRID,         "count2"),
+    ("num_run",        _RE_J_NUMRUN,       "match"),
+    ("quadro_areas",   _RE_J_AREA_M2,      "count3"),
+    ("departamento",   _RE_J_DEPARTAMENTO, "search"),
+    ("dimensoes",      _RE_J_DIMENSOES,    "search"),
+    ("ref_desenho",    _RE_J_SHEET_REF,    "search"),
+    ("label_parede",   _RE_J_WALLLABEL,    "match"),
+    ("orfao",          _RE_J_ORPHAN,       "match"),
+    ("trunc_stem",     _RE_J_TRUNC_STEM,   "match"),
+    ("residuo_tabela", _RE_J_TRAIL_RESID,  "search"),
+]
+
+
+def classify_item_junk(descricao: str) -> str | None:
+    """Classifica a DESCRIÇÃO de um item como lixo. Retorna a tag do padrão, ou None se válida.
+
+    Reaproveita classify_noise() (filtros de linha) e adiciona regras de nível de item.
+    Pattern-based apenas — nunca olha quantidade, preservando itens legítimos de R$ 0,00.
+    """
+    s = (descricao or "").strip()
+    if not s:
+        return "vazio"
+    base = classify_noise(s)
+    if base:
+        return base
+    for tag, pattern, mode in _ITEM_JUNK_FILTERS:
+        if mode == "match":
+            if pattern.match(s):
+                return tag
+        elif mode == "count2":
+            if len(pattern.findall(s)) >= 2:
+                return tag
+        elif mode == "count3":
+            if len(pattern.findall(s)) >= 3:
+                return tag
+        else:
+            if pattern.search(s):
+                return tag
+    return None
+
+
+def is_junk_item(descricao: str) -> bool:
+    """True se a descrição do item for lixo de extração (ver classify_item_junk)."""
+    return classify_item_junk(descricao) is not None
+
+
 def extract_pdf(path: str) -> dict:
     r: dict = {
         "ok": False,
