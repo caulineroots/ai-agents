@@ -21,7 +21,7 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body className={inter.className} style={{ overflow: 'hidden', width: '100vw', height: '100vh' }}>
+      <body className={inter.className}>
         {/* Google Tag Manager (noscript) */}
         <noscript dangerouslySetInnerHTML={{ __html: `<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WRW53MSC" height="0" width="0" style="display:none;visibility:hidden"></iframe>` }} />
         {children}
