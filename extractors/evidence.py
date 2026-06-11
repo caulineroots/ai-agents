@@ -40,6 +40,7 @@ def extract_sheet_evidence(stem: str, pdf_path: str | None = None,
         "area_tags": [],
         "measure_lines": [],
         "dxf_data": None,
+        "dxf_path": dxf_path if dxf_path else None,   # p/ camada de geometria (M4)
     }
 
     if pdf_path:

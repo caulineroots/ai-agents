@@ -23,11 +23,30 @@ _TOL = 0.05          # tolerância de divergência (decisão #3, configurável)
 _CONF_MIN = 60       # abaixo disso, medida é "baixa confiança" (revisar)
 
 
+def _tem_dxf(item: dict, pool: dict) -> bool:
+    cands = item.get("candidatos") or list(pool.keys())
+    return any(pool.get(s, {}).get("dxf_path") for s in cands) or \
+        any(ev.get("dxf_path") for ev in pool.values())
+
+
 def _medir(item: dict, pool: dict, api_key: str | None, use_llm: bool) -> dict | None:
-    """Resolve a medida pela camada stated (det. ou LLM). None se não achar."""
+    """Resolve a medida: camada stated primeiro, depois computed (geometria).
+
+    Hierarquia de provenance: stated > computed > (estimated, futuro).
+    Sem IA: só a camada stated determinística.
+    """
     if use_llm and api_key:
         from extractors.medidor_agent import resolver_item_stated_llm
-        return resolver_item_stated_llm(item, pool, api_key)
+        stated = resolver_item_stated_llm(item, pool, api_key)
+        if stated and stated.get("confianca", 0) >= _CONF_MIN:
+            return stated      # stated confiável: tabela é a melhor fonte
+        # stated fraco/ausente -> tenta geometria; fica com a de MAIOR confiança
+        computed = None
+        if _tem_dxf(item, pool):
+            from extractors.medidor_geometry import resolver_item_computed_llm
+            computed = resolver_item_computed_llm(item, pool, api_key)
+        candidatas = [m for m in (stated, computed) if m]
+        return max(candidatas, key=lambda m: m.get("confianca", 0)) if candidatas else None
     return medir_stated(item, pool)
 
 
