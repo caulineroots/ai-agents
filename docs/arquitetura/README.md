@@ -69,6 +69,8 @@ price lookup) is classical code. That division is what makes the result both *po
 Cross-cutting:
 - [`07-agentes-e-ferramentas.md`](07-agentes-e-ferramentas.md) — agent catalog, tool contracts, tech stack.
 - [`08-roadmap.md`](08-roadmap.md) — build milestones (each independently shippable).
+- [`09-fila-de-jobs.md`](09-fila-de-jobs.md) — async processing: Postgres-backed job queue,
+  Python worker, polling UI (survives reloads). **Includes how to run locally.**
 
 ## Grounding evidence (from the real `254_BLN` project)
 

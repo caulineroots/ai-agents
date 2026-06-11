@@ -7,6 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "worker": "./.venv/bin/python worker.py",
     "postinstall": "node -e \"const fs=require('fs');try{fs.copyFileSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','public/pdf.worker.min.mjs')}catch(e){}\""
   },
   "dependencies": {
