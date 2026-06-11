@@ -53,9 +53,10 @@ export async function ensureServiceRunning(): Promise<void> {
   G._pyBooting = true;
   console.log('[python-service] Iniciando serviço Python…');
 
-  const pythonExe = process.platform === 'win32'
-    ? 'C:\\Users\\AVELL\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
-    : 'python3';
+  const pythonExe = process.env.EXTRACTOR_PYTHON
+    ?? (process.platform === 'win32'
+      ? 'C:\\Users\\AVELL\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
+      : 'python3');
 
   const proc = spawn(
     pythonExe,

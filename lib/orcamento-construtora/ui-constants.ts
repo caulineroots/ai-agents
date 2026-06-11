@@ -1,4 +1,4 @@
-import type { Categoria } from './types';
+import type { Categoria, Unidade } from './types';
 
 export const PRICE_INPUT  = 3  / 1_000_000;
 export const PRICE_OUTPUT = 15 / 1_000_000;
@@ -27,6 +27,17 @@ export const CATEGORIA_COLOR: Record<Categoria, string> = {
   fachada:      'bg-orange-50 text-orange-700 border-orange-300',
   climatizacao: 'bg-teal-50 text-teal-700 border-teal-300',
   outro:        'bg-gray-50 text-gray-600 border-gray-300',
+};
+
+/** Rótulo de exibição da unidade, no padrão das planilhas enviadas ao cliente. */
+export const UNIDADE_LABEL: Record<Unidade, string> = {
+  m2: 'm²',
+  ml: 'ml',
+  un: 'un',
+  m3: 'm³',
+  vb: 'vb.',
+  kg: 'kg',
+  hr: 'h',
 };
 
 export const STATUS_LABEL = {

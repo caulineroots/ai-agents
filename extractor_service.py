@@ -27,7 +27,7 @@ from config import BASE_DIR, ANTHROPIC_KEY, PDF_SUBDIR, DXF_SUBDIR, MODEL
 from schemas import ExtractionResult, Metadata
 from extractors.pdf_extractor import (
     extract_pdf, parse_cea_qnt_tables, extract_partial_items_from_text,
-    parse_cea_qnt_from_text, parse_special_tables_from_text,
+    parse_cea_qnt_from_text, parse_special_tables_from_text, classify_item_junk,
 )
 from extractors.planilha_parser import parse_planilha
 from extractors.dxf_extractor import extract_dxf
@@ -243,8 +243,23 @@ async def extrair_codigo(
     # Combina: itens confirmados (com qty) primeiro, parciais (sem qty) depois
     all_pdf_items = pdf_items + partial_items
 
-    log.info("  Classificacao: %s | score=%d | itens_confirmados=%d | itens_aguardando=%d | precisa_ia=%s",
-             classificacao, score, len(pdf_items), len(partial_items), precisa_ia)
+    # ── Filtro de LIXO determinístico (nível de item) ────────────────────────
+    # classify_noise() só roda por linha; estes itens chegam por parsers/IA que não
+    # passam por ela. Removemos ruído estrutural aqui, na fonte, sem depender do LLM.
+    # Pattern-based — itens legítimos de qty 0 são preservados.
+    itens_validos: list = []
+    itens_descartados: list = []
+    for it in all_pdf_items:
+        motivo = classify_item_junk(it.get("descricao", ""))
+        if motivo:
+            itens_descartados.append({"descricao": it.get("descricao", ""), "motivo": motivo})
+        else:
+            itens_validos.append(it)
+    if itens_descartados:
+        log.info("  Filtro de lixo: %d itens descartados de %d", len(itens_descartados), len(all_pdf_items))
+
+    log.info("  Classificacao: %s | score=%d | itens_confirmados=%d | itens_aguardando=%d | lixo=%d | precisa_ia=%s",
+             classificacao, score, len(pdf_items), len(partial_items), len(itens_descartados), precisa_ia)
 
     # ── Montar resposta ──────────────────────────────────────────────────────
     itens_extraidos = [
@@ -258,7 +273,7 @@ async def extrair_codigo(
             "fonte": it.get("fonte", "PDF"),
             "pendencias": it.get("pendencias", []),
         }
-        for it in all_pdf_items
+        for it in itens_validos
     ]
 
     dxf_counts = dxf_data.get("counts", {
@@ -300,6 +315,8 @@ async def extrair_codigo(
         # ── Itens extraídos ──────────────────────────────────────────────────────
         "n_itens_confirmados": len(pdf_items),
         "n_itens_aguardando":  len(partial_items),
+        "n_itens_lixo":        len(itens_descartados),
+        "itens_descartados":   itens_descartados,   # [{"descricao": str, "motivo": tag}]
         "height_context":      height_context,
 
         # ── Erros ────────────────────────────────────────────────────────────────
@@ -544,13 +561,23 @@ async def analisar_batch(
     label_to_stem = {labels[i]: batch_items[i]["stem"] for i in range(len(batch_items[:len(images_b64)]))}
 
     batched: dict[str, list] = {item["stem"]: [] for item in batch_items[:len(images_b64)]}
+    batched_descartados: list = []
     for it in parsed.get("itens", []):
         label = str(it.get("prancha", "A")).upper()
         stem  = label_to_stem.get(label, batch_items[0]["stem"])
-        batched.setdefault(stem, []).append(it)
+        # Mesmo filtro de lixo determinístico aplicado aos itens da IA (a instrução
+        # "FILTRO DE LIXO" do prompt é não-determinística; este guard não depende dela).
+        motivo = classify_item_junk(it.get("descricao", ""))
+        if motivo:
+            batched_descartados.append({"descricao": it.get("descricao", ""), "motivo": motivo, "stem": stem})
+        else:
+            batched.setdefault(stem, []).append(it)
+    if batched_descartados:
+        log.info("  [batch] Filtro de lixo: %d itens da IA descartados", len(batched_descartados))
 
     return JSONResponse({
         "batched": batched,
+        "itens_descartados": batched_descartados,
         "divergencias": parsed.get("divergencias", []),
         "erros_limitacoes": parsed.get("erros_limitacoes", []),
         "prompt_sent": prompt,

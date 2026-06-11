@@ -31,9 +31,10 @@ async function ensureServiceRunning(): Promise<void> {
   if (_serviceBooting) { await waitForService(60_000); return; }
   _serviceBooting = true;
 
-  const pythonExe = process.platform === 'win32'
-    ? 'C:\\Users\\AVELL\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
-    : 'python3';
+  const pythonExe = process.env.EXTRACTOR_PYTHON
+    ?? (process.platform === 'win32'
+      ? 'C:\\Users\\AVELL\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
+      : 'python3');
 
   const proc = spawn(
     pythonExe,
