@@ -37,6 +37,7 @@ from extractors.ai_client import call_claude, call_claude_multi, parse_ai_json
 from extractors.result_builder import build_items
 from extractors.orchestrator import build_leitura_geral_prompt, build_orchestrator_prompt, build_batch_prompt
 from aprender import router as aprender_router
+from orcamento_pipeline_api import router as orcamento_router
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("extractor")
@@ -60,6 +61,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(aprender_router)
+app.include_router(orcamento_router)
 
 
 @app.get("/health")
