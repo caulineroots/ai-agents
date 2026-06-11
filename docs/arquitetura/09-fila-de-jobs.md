@@ -31,7 +31,7 @@ request timeout (the worker isn't on the HTTP path).
 
 | Piece | Where | Role |
 |---|---|---|
-| Postgres | Docker (`next-app/docker-compose.yml`, host `:5433`) | the `jobs` table — source of truth |
+| Postgres | Docker (`next-app/docker-compose.yml`, host `:5444`) | the `jobs` table — source of truth |
 | Drizzle | `next-app/db/{schema,index}.ts` | schema + typed client (TS side only) |
 | Job API | `next-app/app/api/orcamento-construtora/jobs/**` | create/list/detail/claim/update/download |
 | Worker | `worker/worker.py` | claims → runs `extractors/pipeline.processar` → reports |
@@ -72,7 +72,7 @@ The repo is split into `next-app/` (web + DB) and `worker/` (Python). See the ro
 ```bash
 # terminal 1 — DB + web (in next-app/)
 cd next-app
-docker compose up -d            # or npm run db:up   (postgres on :5433, persistent volume)
+docker compose up -d            # or npm run db:up   (postgres on :5444, persistent volume)
 npm run db:push                 # apply schema (first time / after changes)
 npm run dev                     # Next on :3000
 

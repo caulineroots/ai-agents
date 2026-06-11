@@ -31,7 +31,7 @@ Node 18+, Python 3.10+, Docker (Postgres), e uma `ANTHROPIC_API_KEY` (para o mod
 cd next-app
 cp .env.local.example .env.local      # preencha ANTHROPIC_API_KEY e os caminhos do worker
 npm install
-docker compose up -d                  # Postgres em :5433   (ou: npm run db:up)
+docker compose up -d                  # Postgres em :5444   (ou: npm run db:up)
 npm run db:push                        # aplica o schema (primeira vez / após mudanças)
 npm run dev                            # Next em :3000
 ```
