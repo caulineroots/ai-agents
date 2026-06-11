@@ -94,19 +94,35 @@ def verificar(item: dict, medida: dict | None, tol: float = _TOL) -> dict:
 
 
 def processar(planilha_path: str, sheets: list[dict] | None = None,
-              api_key: str | None = None, use_llm: bool = False) -> dict:
-    """Roda o pipeline. `sheets`: [{stem, pdf?, dxf?}] para o pool de evidências."""
+              api_key: str | None = None, use_llm: bool = False,
+              progress_cb=None) -> dict:
+    """Roda o pipeline. `sheets`: [{stem, pdf?, dxf?}] para o pool de evidências.
+
+    progress_cb(done, total, fase) — opcional, chamado ao longo do processamento
+    (o worker usa para reportar progresso ao job).
+    """
+    def _prog(done, total, fase):
+        if progress_cb:
+            try:
+                progress_cb(done, total, fase)
+            except Exception:
+                pass
+
+    _prog(0, 1, "lendo planilha")
     parsed = parse_planilha(planilha_path)
     if not parsed["ok"]:
         return {"ok": False, "erros": parsed["erros"], "itens": []}
 
+    _prog(0, 1, "extraindo desenhos")
     pool = build_evidence_pool(sheets or [])
     project_map = build_project_map([s["stem"] for s in (sheets or [])])
     classified = classify_items(parsed["itens"], project_map=project_map)["itens"]
 
     table = get_table()
+    total = len(classified)
     itens_out: list[dict] = []
-    for it in classified:
+    for i, it in enumerate(classified):
+        _prog(i, total, "medindo")
         medida = _medir(it, pool, api_key, use_llm)
         verif = verificar(it, medida)
         preco = None
@@ -125,6 +141,7 @@ def processar(planilha_path: str, sheets: list[dict] | None = None,
             rec["delta"] = verif["delta"]
         itens_out.append(rec)
 
+    _prog(total, total, "finalizando")
     resumo = _resumir(itens_out)
     log.info("[pipeline] %s", resumo)
     return {"ok": True, "sheet": parsed["sheet"], "itens": itens_out, "resumo": resumo,
