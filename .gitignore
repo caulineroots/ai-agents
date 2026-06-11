@@ -56,6 +56,9 @@ brain/
 # fixtures de projeto (grandes binários DWG/PDF/PNG — mantidos em disco, fora do git)
 celmar-files/
 
+# arquivos de jobs (uploads + planilhas preenchidas por job) — runtime, fora do git
+storage/
+
 # saídas de teste regeneráveis
 /test-results/
 /playwright-report/

@@ -1,0 +1,25 @@
+# Banco de dados do orçamento (fila de jobs).
+# Subir:   docker compose up -d
+# Parar:   docker compose down        (dados persistem no volume)
+# Resetar: docker compose down -v     (apaga o volume)
+services:
+  db:
+    image: postgres:16
+    container_name: orcamento-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orcamento
+      POSTGRES_PASSWORD: orcamento
+      POSTGRES_DB: orcamento
+    ports:
+      - "5433:5432" # 5432 do host já está em uso -> mapeia para 5433
+    volumes:
+      - orcamento-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orcamento -d orcamento"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  orcamento-pgdata:
