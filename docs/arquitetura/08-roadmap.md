@@ -3,14 +3,19 @@
 Each milestone is independently shippable and verifiable against the real `254_BLN` project.
 Order is chosen so value lands early and risk is retired in sequence.
 
-> **Status (branch `feat/orcamento-planilha-driven`): M1–M5 + frontend implemented.**
-> Full deterministic run on 254_BLN: 227 items → 60 confirmed / 38 found / 21 divergent /
-> 60 manual / 48 lump-sum; budget ≈ R$ 1.71M; 119-line review work-list; filled `.xlsx`
-> produced. 48 tests green. The LLM stated-tier resolver is wired (`use_llm`) and validated
-> live (piso vinílico salão → 1019.77 m², conf 82). **Known follow-ups:** the computed
-> (geometry) tools are built/tested but not yet LLM-orchestrated into the pipeline per-item;
-> MAT/M.OBRA split (v1 writes combined into TOTAL); candidate-sheet quality (filename
-> heuristic — the LLM Project Mapper would improve it); MATERIAL_CLIENTE labor-only pricing.
+> **Status (branch `feat/orcamento-planilha-driven`): fully implemented; old wizard removed.**
+> The scope-driven flow is now the only flow — the discovery-based wizard (steps, endpoints,
+> prompts, orchestrator/context_builder/result_builder, old lib modules) was deleted; `/`
+> redirects to `/orcamento-construtora`, which is the spreadsheet flow. App verified running
+> (HTTP 200, no build errors). Both measurement tiers are wired into the pipeline:
+> **stated** (LLM table resolver — piso vinílico salão → 1019.77 m², conf 82) and **computed**
+> (DXF geometry — doors → 2 un via the PORTA block; generic-layer areas demoted to low
+> confidence). Full deterministic run on 254_BLN: 227 items, budget ≈ R$ 1.71M, 119-line
+> review work-list, filled `.xlsx`. 48 tests green.
+>
+> **Remaining follow-ups:** MAT/M.OBRA split (v1 writes combined into TOTAL); candidate-sheet
+> quality (filename heuristic — an LLM Project Mapper would improve it); MATERIAL_CLIENTE
+> labor-only pricing; optional vision/estimated tier; full-project LLM run cost tuning.
 
 ## M1 · Spreadsheet backbone *(no LLM)* — ✅ DONE
 Build `parse-planilha` + the `LineItem` model, and expose it via the service.
