@@ -71,6 +71,12 @@ Cross-cutting:
 - [`08-roadmap.md`](08-roadmap.md) — build milestones (each independently shippable).
 - [`09-fila-de-jobs.md`](09-fila-de-jobs.md) — async processing: Postgres-backed job queue,
   Python worker, polling UI (survives reloads). **Includes how to run locally.**
+- [`10-estrutura-e-operacao.md`](10-estrutura-e-operacao.md) — **current state**: the
+  `next-app/` + `worker/` monorepo, the three services, ports, env, and how to run everything.
+  Start here for orientation. (Note: paths in docs 00–09 are relative to the service folder.)
+
+**Operational skills** — for an agent operating a specific service, see
+`.claude/skills/{db,worker,next-app}/SKILL.md` (start/stop/reset/inspect/debug per service).
 
 ## Grounding evidence (from the real `254_BLN` project)
 
