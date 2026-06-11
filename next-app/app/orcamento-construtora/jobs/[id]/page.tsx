@@ -106,8 +106,8 @@ export default function JobDetail() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/70">
-                  {job.result.work_list.map((l) => (
-                    <tr key={l.item} className="hover:bg-zinc-900/40">
+                  {job.result.work_list.map((l, i) => (
+                    <tr key={`${l.item}-${i}`} className="hover:bg-zinc-900/40">
                       <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">{l.item}</td>
                       <td className="px-3 py-2">{l.descricao}</td>
                       <td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-xs ${ITEM_COR[l.status] ?? ''}`}>{l.status}</span></td>
