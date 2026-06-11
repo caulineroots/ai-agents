@@ -46,10 +46,23 @@ _STRATEGY_BY_UNIT = {
 
 _NEEDS_DRAWING = {"AREA", "LINEAR", "COUNT", "VOLUME"}
 
-# ── Detecção de fornecimento por terceiro / fora de escopo ────────────────────
-_RE_FORNEC_TERCEIRO = re.compile(
-    r"contrata[çc][ãa]o\s+direta|fornecid[oa]s?\s+(pela|pelo|e\s+instalad)|"
-    r"pela\s+c&a|pela\s+instalador|por\s+conta\s+(da|do)\s+(c&a|cliente)",
+# ── Fornecimento por terceiro: distinguir FORA DE ESCOPO de MATERIAL DO CLIENTE ──
+# Fora de escopo: a construtora não executa (contratação direta, fornecido E instalado).
+_RE_FORA_ESCOPO = re.compile(
+    r"contrata[çc][ãa]o\s+direta|fornecid[oa]s?\s+e\s+instalad|"
+    r"por\s+conta\s+(da|do)\s+(c&a|cliente)",
+    re.IGNORECASE,
+)
+# Material do cliente: a construtora EXECUTA o serviço, só o material é fornecido pela C&A.
+# Continua precisando de medida (área/comprimento/contagem) — precificado como MÃO DE OBRA.
+_RE_MATERIAL_CLIENTE = re.compile(
+    r"fornecid[oa]s?\s+(pela|pelo)\s+c&a|material\s+fornecid[oa]|pela\s+c&a",
+    re.IGNORECASE,
+)
+# Verbos de serviço executados pela construtora
+_RE_SERVICO = re.compile(
+    r"assentamento|aplica[çc][ãa]o|execu[çc][ãa]o|montagem|instala[çc][ãa]o|"
+    r"demoli[çc][ãa]o|pintura|emassamento|coloca[çc][ãa]o|revestimento\s+de",
     re.IGNORECASE,
 )
 # Linhas que são observações/notas, não itens priceáveis
@@ -129,24 +142,31 @@ def classify_one(item: dict, project_map: list[dict] | None = None) -> dict:
     unidade = normalize_unit(item.get("unidade_raw", ""))
     categoria = guess_categoria(desc)
 
-    fornec_terceiro = bool(_RE_FORNEC_TERCEIRO.search(desc))
     is_nota = bool(_RE_NOTA.search(desc))
+    has_servico = bool(_RE_SERVICO.search(desc))
+    # Fora de escopo: contratação direta, OU "fornecido pela C&A" SEM serviço da construtora
+    fora_escopo = bool(_RE_FORA_ESCOPO.search(desc)) or (
+        bool(_RE_MATERIAL_CLIENTE.search(desc)) and not has_servico)
+    # Material do cliente, mas a construtora executa o serviço -> mede e precifica só M.O.
+    material_cliente = bool(_RE_MATERIAL_CLIENTE.search(desc)) and has_servico and not fora_escopo
 
     if unidade:
         estrategia = _STRATEGY_BY_UNIT.get(unidade, "INDEFINIDO")
     elif is_nota:
         estrategia = "NOTA"          # linha de observação, não priceável
-    elif fornec_terceiro:
-        estrategia = "LUMP_SUM"      # fornecimento direto — sem medição
+    elif fora_escopo:
+        estrategia = "LUMP_SUM"      # fornecimento/execução por terceiro — sem medição
     else:
         estrategia = "INDEFINIDO"    # unidade em branco e sem pista — IA/humano decide
 
-    # Itens fornecidos por terceiro não exigem medição mesmo com unidade geométrica
-    needs_drawing = (estrategia in _NEEDS_DRAWING) and not fornec_terceiro and not is_nota
+    # Fora de escopo e notas não exigem medição; material do cliente AINDA exige (mede p/ M.O.)
+    needs_drawing = (estrategia in _NEEDS_DRAWING) and not fora_escopo and not is_nota
 
     flags: list[str] = []
-    if fornec_terceiro:
-        flags.append("FORNEC_TERCEIRO")
+    if fora_escopo:
+        flags.append("FORA_ESCOPO")
+    if material_cliente:
+        flags.append("MATERIAL_CLIENTE")     # precificar apenas mão de obra
     if estrategia == "INDEFINIDO":
         flags.append("ESTRATEGIA_INDEFINIDA")
     if is_nota:

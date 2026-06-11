@@ -89,6 +89,51 @@ def call_claude(
     return raw_text, tokens_in, tokens_out, custo
 
 
+def call_claude_json(
+    prompt: str,
+    schema: dict,
+    api_key: str,
+    images_b64: "list[str] | None" = None,
+    max_tokens: int = 4000,
+    tool_name: str = "resultado",
+) -> tuple[dict, int, int, float]:
+    """Saída estruturada via tool-use forçado (sem parse_ai_json frágil).
+
+    `schema` é o JSON Schema do objeto desejado. Retorna (obj, tin, tout, custo).
+    Ver docs/arquitetura/07-agentes-e-ferramentas.md (drop parse_ai_json).
+    """
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    content: list = []
+    for img in (images_b64 or []):
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/jpeg", "data": img},
+        })
+    content.append({"type": "text", "text": prompt})
+
+    tool = {"name": tool_name, "description": "Retorna o resultado estruturado.",
+            "input_schema": schema}
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        tools=[tool],
+        tool_choice={"type": "tool", "name": tool_name},
+        messages=[{"role": "user", "content": content}],
+    )
+
+    obj: dict = {}
+    for block in response.content:
+        if getattr(block, "type", None) == "tool_use":
+            obj = block.input
+            break
+    tin, tout = response.usage.input_tokens, response.usage.output_tokens
+    custo = tin * 3 / 1_000_000 + tout * 15 / 1_000_000
+    log.info("  [json] tokens in=%d out=%d custo=$%.4f", tin, tout, custo)
+    return obj, tin, tout, custo
+
+
 def parse_ai_json(raw_text: str, save_path: Path | None = None) -> dict:
     """
     Parse resiliente em 4 tentativas. Salva resposta raw em save_path quando fornecido.

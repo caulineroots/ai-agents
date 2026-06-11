@@ -49,15 +49,31 @@ def test_needs_drawing_flag():
     assert classify_one({"descricao": "Vigilância", "unidade_raw": "dia"})["needs_drawing"] is False
 
 
-def test_fornecimento_terceiro_detection():
+def test_fora_escopo_contratacao_direta():
     it = classify_one({"descricao": "Mezanino metálico - contratação direta C&A", "unidade_raw": ""})
-    assert "FORNEC_TERCEIRO" in it["class_flags"]
+    assert "FORA_ESCOPO" in it["class_flags"]
     assert it["needs_drawing"] is False
     assert it["estrategia"] == "LUMP_SUM"
-    # mesmo com unidade geométrica, fornecimento por terceiro não exige medição
+    # "fornecido pela C&A" SEM verbo de serviço da construtora -> fora de escopo
     it2 = classify_one({"descricao": "Estante metálica fornecido pela C&A", "unidade_raw": "pç"})
     assert it2["needs_drawing"] is False
-    assert "FORNEC_TERCEIRO" in it2["class_flags"]
+    assert "FORA_ESCOPO" in it2["class_flags"]
+
+
+def test_material_cliente_ainda_mede():
+    # serviço executado pela construtora + material do cliente -> MEDE (p/ mão de obra)
+    it = classify_one({
+        "descricao": "Assentamento de piso vinílico salão de vendas/provadores - material fornecido pela C&A",
+        "unidade_raw": "m²"})
+    assert it["needs_drawing"] is True
+    assert it["estrategia"] == "AREA"
+    assert "MATERIAL_CLIENTE" in it["class_flags"]
+    assert "FORA_ESCOPO" not in it["class_flags"]
+    # montagem (serviço) de item fornecido pela C&A também mede (contagem)
+    it2 = classify_one({"descricao": "Montagem de estante modular metálica - fornecido pela C&A",
+                        "unidade_raw": "pç"})
+    assert it2["needs_drawing"] is True
+    assert "MATERIAL_CLIENTE" in it2["class_flags"]
 
 
 def test_nota_detection():
