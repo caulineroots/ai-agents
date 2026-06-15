@@ -64,18 +64,18 @@ export default function DemoPage() {
       <div ref={topRef} />
       {/* Demo header */}
       <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-base font-bold text-zinc-100 tracking-tight">OrçamentarIA</span>
             <span className="px-2 py-0.5 text-xs font-bold tracking-widest uppercase rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
               DEMO
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {step === 4 && (
               <button
                 onClick={() => setStep(3)}
-                className="text-sm px-3 py-1.5 border border-zinc-700 text-zinc-400 rounded hover:bg-zinc-800 hover:text-zinc-200 transition-all"
+                className="text-sm px-2.5 py-1.5 border border-zinc-700 text-zinc-400 rounded hover:bg-zinc-800 hover:text-zinc-200 transition-all"
               >
                 ← Revisão
               </button>
@@ -84,9 +84,10 @@ export default function DemoPage() {
               href={waUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm px-4 py-1.5 bg-violet-500 text-white rounded font-medium hover:bg-violet-400 transition-colors"
+              className="text-sm px-3 py-1.5 bg-violet-500 text-white rounded font-medium hover:bg-violet-400 transition-colors whitespace-nowrap"
             >
-              Quero usar de verdade →
+              <span className="hidden sm:inline">Quero usar de verdade →</span>
+              <span className="sm:hidden">Usar →</span>
             </a>
           </div>
         </div>
@@ -112,7 +113,7 @@ export default function DemoPage() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 max-w-[1800px] mx-auto w-full px-6 py-6">
+      <main className="flex-1 max-w-[1800px] mx-auto w-full px-3 sm:px-6 py-4 sm:py-6">
         {step === 3 && (
           <StepReview
             folha={folha}
@@ -138,8 +139,8 @@ export default function DemoPage() {
 
       {/* Bottom CTA */}
       <div className="border-t border-zinc-800 bg-zinc-900/60 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-center sm:text-left">
             <p className="text-base font-semibold text-zinc-100">Gostou do que viu?</p>
             <p className="text-sm text-zinc-400 mt-0.5">Na versão real, você sobe o PDF do seu projeto e a IA gera tudo isso em minutos.</p>
           </div>
@@ -147,7 +148,7 @@ export default function DemoPage() {
             href={waUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-shrink-0 px-6 py-3 bg-violet-500 text-white rounded font-semibold text-base hover:bg-violet-400 active:scale-95 transition-all"
+            className="w-full sm:w-auto flex-shrink-0 text-center px-6 py-3 bg-violet-500 text-white rounded font-semibold text-base hover:bg-violet-400 active:scale-95 transition-all"
           >
             Falar no WhatsApp →
           </a>

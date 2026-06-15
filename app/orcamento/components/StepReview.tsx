@@ -594,7 +594,7 @@ export function StepReview({
   const defaultMaterial = folha.itens[0]?.material ?? 'Granito';
 
   return (
-    <div className="flex gap-5 w-full items-start animate-fade-in">
+    <div className="flex flex-col lg:flex-row gap-5 w-full items-start animate-fade-in">
       {zoomUrl && (
         <ZoomModal url={zoomUrl} label={zoomLabel} onClose={() => setZoomUrl(null)}
           hasPrev={viewingImageIdx > 0} hasNext={viewingImageIdx < imageUrls.length - 1}
@@ -609,7 +609,7 @@ export function StepReview({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-zinc-100">Revisão do Projeto</h2>
-              <p className="text-base text-zinc-300 mt-0.5">{folha.projeto}</p>
+              <p className="text-sm font-semibold text-violet-400 mt-0.5 tracking-wide">{folha.projeto}</p>
             </div>
           </div>
           <div className="mt-3 flex gap-2 flex-wrap">
@@ -660,8 +660,8 @@ export function StepReview({
         </div>
       </div>
 
-      {/* RIGHT: sticky image panel */}
-      <div className="flex-shrink-0 sticky top-0 self-start" style={{ width: '1020px' }}>
+      {/* RIGHT: sticky image panel — hidden on mobile */}
+      <div className="hidden lg:block flex-shrink-0 sticky top-0 self-start" style={{ width: '1020px' }}>
         <div className="rounded-sm overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl flex flex-col" style={{ height: 'calc(100vh - 32px)' }}>
           <div className="relative bg-zinc-950 flex items-center justify-center cursor-zoom-in flex-1 min-h-0" onClick={() => { if (currentViewUrl) { setZoomUrl(currentViewUrl); setZoomLabel(`Prancha ${viewingImageIdx + 1}`); } }}>
             {currentViewUrl ? (
