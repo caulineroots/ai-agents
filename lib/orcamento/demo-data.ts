@@ -1053,13 +1053,7 @@ export const DEMO_TOKEN_LOGS: TokenLog[] = [
       "input_tokens": 30668,
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 6614,
-      "service_tier": "standard",
-      "inference_geo": "global"
+      "output_tokens": 6614
     }
   },
   {
@@ -1068,13 +1062,7 @@ export const DEMO_TOKEN_LOGS: TokenLog[] = [
       "input_tokens": 45626,
       "cache_creation_input_tokens": 0,
       "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 5528,
-      "service_tier": "standard",
-      "inference_geo": "global"
+      "output_tokens": 5528
     }
   }
 ];
