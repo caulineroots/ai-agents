@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import type { FolhaMedicao, ItemMedicao, ResultadoOrcamento } from '@/lib/orcamento/types';
+import { createPortal } from 'react-dom';
+import type { FolhaMedicao, ItemMedicao, ResultadoOrcamento, Servico } from '@/lib/orcamento/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,53 +31,160 @@ interface TokenLog {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Painéis de debug (tokens, logs de chamadas) só aparecem em dev ou quando
-// NEXT_PUBLIC_DEV_MODE=true está configurado no ambiente (ex: Vercel env vars).
 const IS_DEV =
-  process.env.NEXT_PUBLIC_DEV_MODE === 'true' ||
-  process.env.NODE_ENV === 'development';
+  process.env.NODE_ENV === 'development'
+    ? process.env.NEXT_PUBLIC_DEV_MODE !== 'false'
+    : process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
 function fmtBRL(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function statusIcon(status: ItemMedicao['status']) {
-  if (status === 'confirmado') return '✅';
-  if (status === 'parcial') return '⚠';
-  return '⛔';
-}
-
 // ─── Zoom Modal ───────────────────────────────────────────────────────────────
 
-function ZoomModal({ url, label, onClose }: { url: string; label: string; onClose: () => void }) {
+function ZoomModal({ url, label, onClose, onPrev, onNext, hasPrev, hasNext }: {
+  url: string; label: string; onClose: () => void;
+  onPrev?: () => void; onNext?: () => void; hasPrev?: boolean; hasNext?: boolean;
+}) {
+  const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  return (
+  // Bloqueia scroll da página por trás
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaMode === 1 ? e.deltaY * 20 : e.deltaY;
+      const factor = Math.exp(-delta * 0.003);
+      setScale(prev => Math.min(Math.max(prev * factor, 1), 8));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  useEffect(() => {
+    if (scale <= 1) setPan({ x: 0, y: 0 });
+  }, [scale]);
+
+  const reset = () => { setScale(1); setPan({ x: 0, y: 0 }); };
+  const zoomTo = (s: number) => { setScale(s); if (s <= 1) setPan({ x: 0, y: 0 }); };
+  const PRESETS = [1, 1.5, 2, 2.5, 3] as const;
+  const didDragRef = useRef(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale <= 1) return;
+    didDragRef.current = false;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    didDragRef.current = true;
+    setPan({
+      x: dragRef.current.px + (e.clientX - dragRef.current.sx),
+      y: dragRef.current.py + (e.clientY - dragRef.current.sy),
+    });
+  };
+
+  const endDrag = () => { dragRef.current = null; };
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4"
-      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'black', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      onMouseMove={handleMouseMove}
+      onMouseUp={endDrag}
+      onMouseLeave={endDrag}
     >
-      <div className="w-full max-w-5xl flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <span className="text-white text-sm font-medium">{label}</span>
+      {/* Toolbar */}
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', gap: '12px', backgroundColor: 'rgba(24,24,27,0.9)', borderBottom: '1px solid rgb(39,39,42)' }}>
+        {/* Label + nav arrows */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
+          {(onPrev || onNext) && (
+            <>
+              <button onClick={onPrev} disabled={!hasPrev}
+                style={{ flexShrink: 0, fontSize: '18px', background: 'none', border: 'none', color: hasPrev ? 'rgb(212,212,216)' : 'rgb(63,63,70)', cursor: hasPrev ? 'pointer' : 'default', lineHeight: 1, padding: '0 4px' }}>
+                ←
+              </button>
+              <button onClick={onNext} disabled={!hasNext}
+                style={{ flexShrink: 0, fontSize: '18px', background: 'none', border: 'none', color: hasNext ? 'rgb(212,212,216)' : 'rgb(63,63,70)', cursor: hasNext ? 'pointer' : 'default', lineHeight: 1, padding: '0 4px' }}>
+                →
+              </button>
+            </>
+          )}
+          <span style={{ color: 'rgb(228,228,231)', fontSize: '15px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {PRESETS.map((p) => {
+            const active = Math.round(scale * 100) === Math.round(p * 100);
+            return (
+              <button
+                key={p}
+                onClick={() => zoomTo(p)}
+                style={{
+                  fontSize: '13px',
+                  borderRadius: '2px',
+                  padding: '4px 10px',
+                  fontVariantNumeric: 'tabular-nums',
+                  backgroundColor: active ? 'rgb(139,92,246)' : 'transparent',
+                  color: active ? 'white' : 'rgb(212,212,216)',
+                  fontWeight: active ? 600 : 400,
+                  border: active ? 'none' : '1px solid rgb(63,63,70)',
+                  cursor: 'pointer',
+                }}
+              >
+                {Math.round(p * 100)}%
+              </button>
+            );
+          })}
+          <span style={{ color: 'rgb(161,161,170)', fontSize: '13px', fontVariantNumeric: 'tabular-nums', marginLeft: '4px' }}>{Math.round(scale * 100)}%</span>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-xl leading-none px-2"
+            style={{ marginLeft: '12px', color: 'rgb(212,212,216)', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}
           >
             ✕
           </button>
         </div>
+      </div>
+
+      {/* Image area */}
+      <div
+        ref={containerRef}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: scale > 1 ? 'grab' : 'default' }}
+        onMouseDown={handleMouseDown}
+        onDoubleClick={reset}
+      >
         <img
           src={url}
           alt={label}
-          className="w-full max-h-[85vh] object-contain rounded-lg"
+          draggable={false}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            transform: `scale(${scale}) translate(${pan.x / scale}px, ${pan.y / scale}px)`,
+            transformOrigin: 'center center',
+            cursor: scale > 1 ? 'grab' : 'default',
+          }}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -84,7 +192,7 @@ function ZoomModal({ url, label, onClose }: { url: string; label: string; onClos
 
 type UploadPhase = 'idle' | 'loading' | 'reviewing' | 'confirming' | 'converting';
 
-function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => void }) {
+function StepUpload({ onConversionStart, onDone }: { onConversionStart: () => void; onDone: (blobs: Blob[], texts: string[]) => void }) {
   const [phase, setPhase] = useState<UploadPhase>('idle');
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -94,14 +202,15 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [cachedPages, setCachedPages] = useState<Set<number>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfDocRef = useRef<any>(null);
   const pageCacheRef = useRef<Map<number, string>>(new Map());
   const currentPageRef = useRef(0);
   const bgRenderingRef = useRef(false);
+  const pdfFileRef = useRef<File | null>(null);
 
-  // Render a single page to cache (no UI side-effects)
   const renderToCache = useCallback(async (idx: number): Promise<string | null> => {
     if (!pdfDocRef.current || pageCacheRef.current.has(idx)) {
       return pageCacheRef.current.get(idx) ?? null;
@@ -115,11 +224,11 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
       await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
       const url = canvas.toDataURL('image/jpeg', 0.82);
       pageCacheRef.current.set(idx, url);
+      setCachedPages((prev) => { const next = new Set(prev); next.add(idx); return next; });
       return url;
     } catch { return null; }
   }, []);
 
-  // Display a specific page — instant if cached, otherwise render
   const displayPage = useCallback((idx: number) => {
     currentPageRef.current = idx;
     setCurrentPage(idx);
@@ -139,10 +248,8 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
     }
   }, [renderToCache]);
 
-  // Navigate and pre-cache neighbours
   const goTo = useCallback((idx: number, total: number) => {
     displayPage(idx);
-    // Eagerly pre-cache ±3 pages
     [-1, 1, 2, 3].forEach((offset) => {
       const n = idx + offset;
       if (n >= 0 && n < total && !pageCacheRef.current.has(n)) {
@@ -151,15 +258,15 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
     });
   }, [displayPage, renderToCache]);
 
-  // Background render all pages silently
   const startBgRender = useCallback(async (total: number) => {
     if (bgRenderingRef.current) return;
     bgRenderingRef.current = true;
-    for (let i = 0; i < total; i++) {
-      if (!pageCacheRef.current.has(i)) {
-        await renderToCache(i);
-        await new Promise((r) => setTimeout(r, 8)); // yield to UI thread
-      }
+    const BATCH = 3;
+    // Páginas em ordem (0,1,2,3,...) processadas em batches paralelos de BATCH
+    for (let i = 0; i < total; i += BATCH) {
+      const batch = Array.from({ length: Math.min(BATCH, total - i) }, (_, k) => i + k)
+        .filter((idx) => !pageCacheRef.current.has(idx));
+      if (batch.length > 0) await Promise.all(batch.map(renderToCache));
     }
     bgRenderingRef.current = false;
   }, [renderToCache]);
@@ -168,6 +275,7 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
     setPhase('loading');
     setError('');
     pageCacheRef.current.clear();
+    setCachedPages(new Set());
     bgRenderingRef.current = false;
     try {
       const pdfjsLib = await import('pdfjs-dist');
@@ -180,71 +288,64 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
       setSelected(new Set(Array.from({ length: total }, (_, i) => i)));
       currentPageRef.current = 0;
       setCurrentPage(0);
-
-      // Render page 0 synchronously before showing UI
       setIsRendering(true);
       const url = await renderToCache(0);
       setPageDataUrl(url);
       setIsRendering(false);
       setPhase('reviewing');
-
-      // Pre-cache pages 1-4 immediately, then rest in background
       for (let i = 1; i <= Math.min(4, total - 1); i++) {
         await renderToCache(i);
       }
-      startBgRender(total); // fire and forget
+      startBgRender(total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar PDF');
       setPhase('idle');
     }
   }, [renderToCache, startBgRender]);
 
-  const convertSelected = useCallback(() => {
-    setPhase('confirming');
-  }, []);
+  const convertSelected = useCallback(() => { setPhase('confirming'); }, []);
 
   const startConversion = useCallback(async () => {
-    setPhase('converting');
     setError('');
+    onConversionStart(); // vai direto pro step 2
     try {
-      const pdf = pdfDocRef.current;
       const sortedSelected = [...selected].sort((a, b) => a - b);
-      const blobs: Blob[] = [];
-      const texts: string[] = [];
-      for (let j = 0; j < sortedSelected.length; j++) {
-        setProgress(`Convertendo ${j + 1} de ${sortedSelected.length}...`);
-        const page = await pdf.getPage(sortedSelected[j] + 1);
 
-        // Extract text layer (camada de texto do PDF — valores exatos das cotas)
-        try {
-          const textContent = await page.getTextContent();
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const text = textContent.items.map((item: any) => item.str).filter((s: string) => s.trim()).join(' | ');
-          texts.push(text);
-        } catch {
-          texts.push('');
-        }
+      // Obtém o ArrayBuffer do PDF original para enviar ao worker
+      const pdfDoc = pdfDocRef.current;
+      if (!pdfDoc) throw new Error('PDF não carregado');
 
-        const viewport = page.getViewport({ scale: 1.2 });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-        const blob = await new Promise<Blob>((resolve) => {
-          canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.82);
-        });
-        blobs.push(blob);
-      }
-      onDone(blobs, texts);
+      const file = pdfFileRef.current;
+      if (!file) throw new Error('Arquivo PDF não encontrado');
+      const pdfData = await file.arrayBuffer();
+
+      const worker = new Worker(new URL('./pdf.worker.ts', import.meta.url));
+
+      await new Promise<void>((resolve, reject) => {
+        worker.onmessage = (e: MessageEvent) => {
+          const msg = e.data as { type: string; current?: number; total?: number; buffers?: ArrayBuffer[]; texts?: string[]; message?: string };
+          if (msg.type === 'progress') {
+            setProgress(`Convertendo ${msg.current} de ${msg.total}...`);
+          } else if (msg.type === 'done') {
+            const blobs = (msg.buffers ?? []).map((buf) => new Blob([buf], { type: 'image/jpeg' }));
+            worker.terminate();
+            onDone(blobs, msg.texts ?? []);
+            resolve();
+          } else if (msg.type === 'error') {
+            worker.terminate();
+            reject(new Error(msg.message ?? 'Erro no worker'));
+          }
+        };
+        worker.onerror = (ev) => { worker.terminate(); reject(new Error(ev.message)); };
+        worker.postMessage({ pdfData, selectedPages: sortedSelected }, [pdfData]);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro na conversão');
       setPhase('confirming');
     }
   }, [selected, onDone]);
 
-  // Action: decide for current page and advance
   const decide = useCallback((include: boolean) => {
-    // Capture index NOW — goTo() below mutates currentPageRef before setSelected runs
     const pageIdx = currentPageRef.current;
     setSelected((prev) => {
       const next = new Set(prev);
@@ -258,81 +359,93 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
 
   const handleFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Envie um arquivo PDF.'); return; }
+    pdfFileRef.current = file;
+    if (process.env.NODE_ENV !== 'production') { loadPDF(file); return; }
+    fetch(`/api/orcamento/salvar-pdf?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST', body: file, headers: { 'Content-Type': 'application/pdf' },
+    })
+      .then((r) => r.json())
+      .then((d) => { if (IS_DEV) console.log('[S3] PDF salvo:', d.key); })
+      .catch((e) => { if (IS_DEV) console.warn('[S3] Falha ao salvar PDF:', e); });
     loadPDF(file);
   };
 
-  // ── Phase: idle ──────────────────────────────────────────────────────────────
+  // ── Phase: idle — Hero ────────────────────────────────────────────────────
   if (phase === 'idle') {
     return (
-      <div className="flex flex-col items-center gap-6">
-        <h2 className="text-xl font-semibold text-gray-800">Passo 1 — Upload do Projeto</h2>
-        <p className="text-sm text-gray-500 text-center max-w-md">
-          Envie o caderno executivo em PDF. O arquivo será convertido no seu navegador — nenhum dado é armazenado.
-        </p>
+      <div className="flex flex-col items-center justify-center min-h-[72vh] gap-10 animate-fade-in">
+        {/* Brand mark */}
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div>
+            <h1 className="text-4xl font-semibold text-zinc-50 tracking-tight flex flex-wrap gap-x-[0.35em] justify-center">
+              {['Gerador', 'de', 'Orçamento', 'por', 'IA'].map((word, i) => (
+                <span key={word} className={`word-in-${i} inline-block`}>{word}</span>
+              ))}
+            </h1>
+          </div>
+        </div>
+
+        {/* Drop zone */}
         <div
-          className={`w-full max-w-md border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
-            dragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+          className={`w-full max-w-md border-2 border-dashed rounded-sm p-10 flex flex-col items-center gap-5 cursor-pointer transition-all duration-200 ${
+            dragging
+              ? 'border-violet-500 bg-violet-500/10 scale-[1.01]'
+              : 'border-zinc-700 bg-zinc-900/50 hover:border-zinc-600 hover:bg-zinc-800/40'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
           onClick={() => inputRef.current?.click()}
         >
-          <span className="text-4xl">📄</span>
-          <p className="text-sm text-gray-600 font-medium">Arraste o PDF aqui ou clique para selecionar</p>
-          <p className="text-xs text-gray-400">Apenas arquivos .pdf</p>
+          <p className="text-base font-medium text-zinc-200">Clique aqui para subir o PDF do projeto.</p>
           <input ref={inputRef} type="file" accept=".pdf" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         </div>
-        {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>}
+
+        {error && (
+          <div className="flex items-center gap-2 text-base text-red-400 bg-red-500/10 border border-red-500/20 rounded px-4 py-3">
+            
+            {error}
+          </div>
+        )}
       </div>
     );
   }
 
   if (phase === 'loading') {
     return (
-      <div className="flex flex-col items-center gap-4 py-16">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-gray-500">Carregando PDF...</p>
+      <div className="flex flex-col items-center gap-5 py-20 animate-fade-in">
+        <div className="spinner-gradient" />
+        <p className="text-base text-zinc-300">Carregando PDF...</p>
       </div>
     );
   }
 
-  if (phase === 'converting') {
-    return (
-      <div className="flex flex-col items-center gap-4 py-16">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-gray-600">{progress || 'Preparando imagens...'}</p>
-      </div>
-    );
-  }
-
-  // ── Phase: confirming ────────────────────────────────────────────────────────
+  // ── Phase: confirming ─────────────────────────────────────────────────────
   if (phase === 'confirming') {
     const sortedSelected = [...selected].sort((a, b) => a - b);
     const excluded = totalPages - selected.size;
     return (
-      <div className="flex flex-col items-center gap-6 py-6">
+      <div className="flex flex-col items-center gap-7 py-8 animate-fade-in">
         <div className="flex flex-col items-center gap-2 text-center">
-          <span className="text-4xl">🔍</span>
-          <h2 className="text-xl font-semibold text-gray-900">Pronto para analisar</h2>
-          <p className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-800">{selected.size}</span> pranchas selecionadas
-            {excluded > 0 && <span className="text-gray-400"> · {excluded} ignoradas</span>}
+          <h2 className="text-2xl font-semibold text-zinc-50">Pronto para analisar</h2>
+          <p className="text-base text-zinc-300">
+            <span className="font-semibold text-zinc-200">{selected.size}</span> pranchas selecionadas
+            {excluded > 0 && <span className="text-zinc-400"> · {excluded} ignoradas</span>}
           </p>
         </div>
 
-        {/* Thumbnail strip of selected pages */}
-        <div className="flex gap-2 flex-wrap justify-center max-w-md">
+        {/* Thumbnail strip */}
+        <div className="flex gap-2 flex-wrap justify-center max-w-sm">
           {sortedSelected.map((idx) => {
             const thumb = pageCacheRef.current.get(idx);
             return (
               <div key={idx} className="relative">
                 {thumb
-                  ? <img src={thumb} alt={`p${idx + 1}`} className="h-16 w-20 object-cover rounded-lg border-2 border-blue-300" />
-                  : <div className="h-16 w-20 rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-400">{idx + 1}</div>
+                  ? <img src={thumb} alt={`p${idx + 1}`} className="h-16 w-20 object-cover rounded-sm border-2 border-violet-500/60" />
+                  : <div className="h-16 w-20 rounded-sm border-2 border-zinc-700 bg-zinc-800 flex items-center justify-center"><div className="w-4 h-4 border-2 border-zinc-600 border-t-zinc-400 rounded-full animate-spin" /></div>
                 }
-                <span className="absolute bottom-1 right-1 bg-blue-500 text-white text-xs font-bold px-1 rounded">
+                <span className="absolute bottom-1 right-1 bg-violet-500 text-white text-sm font-bold px-1 rounded">
                   {idx + 1}
                 </span>
               </div>
@@ -340,122 +453,134 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
           })}
         </div>
 
-        <div className="flex flex-col gap-3 w-full max-w-sm">
+        <div className="flex flex-col gap-2.5 w-full max-w-sm">
           <button
             onClick={startConversion}
-            className="w-full py-3.5 bg-blue-600 text-white rounded-xl text-base font-semibold hover:bg-blue-700 active:scale-[0.98] transition-all"
+            className="w-full py-3.5 bg-violet-500 text-white rounded text-base font-semibold hover:bg-violet-400 active:scale-[0.98] transition-all"
           >
             Iniciar análise com IA →
           </button>
           <button
             onClick={() => setPhase('reviewing')}
-            className="w-full py-2.5 border border-gray-300 text-gray-600 rounded-xl text-sm hover:bg-gray-50 transition-all"
+            className="w-full py-2.5 border border-zinc-700 text-zinc-400 rounded text-base hover:bg-zinc-800 hover:text-zinc-200 transition-all"
           >
             ← Voltar e ajustar seleção
           </button>
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">{error}</p>
+          <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-sm px-4 py-2.5">
+            
+            {error}
+          </div>
         )}
       </div>
     );
   }
 
-  // ── Phase: reviewing — full-screen split layout ──────────────────────────────
+  // ── Phase: reviewing — full-screen ────────────────────────────────────────
   const isIncluded = selected.has(currentPage);
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-gray-950">
+    <div className="fixed inset-0 z-50 flex bg-zinc-950">
       {/* LEFT — full image */}
-      <div className="relative flex-1 flex items-center justify-center bg-gray-950 overflow-hidden">
+      <div className="relative flex-1 flex items-center justify-center bg-zinc-950 overflow-hidden p-10">
         {isRendering && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="w-10 h-10 border-4 border-white/40 border-t-white rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-zinc-700 border-t-zinc-300 rounded-full animate-spin" />
           </div>
         )}
         {pageDataUrl && (
-          <img
-            key={currentPage}
-            src={pageDataUrl}
-            alt={`Página ${currentPage + 1}`}
-            className="w-full h-full object-contain"
-          />
+          <div className="relative h-full flex items-center justify-center">
+            <div className="absolute -inset-3 rounded-sm border border-zinc-700/60 shadow-[0_0_60px_-10px_rgba(0,0,0,0.8)]" />
+            <img
+              key={currentPage}
+              src={pageDataUrl}
+              alt={`Página ${currentPage + 1}`}
+              className="relative h-full max-h-full w-auto object-contain rounded-sm shadow-2xl"
+            />
+          </div>
         )}
-        {/* Page badge */}
-        <div className="absolute top-4 left-4 bg-black/60 text-white text-sm font-bold px-3 py-1.5 rounded-full backdrop-blur-sm">
+        <div className="absolute top-4 left-4 bg-zinc-900/80 backdrop-blur-sm text-zinc-200 text-base font-semibold px-3 py-1.5 rounded border border-zinc-700">
           {currentPage + 1} / {totalPages}
         </div>
       </div>
 
       {/* RIGHT — decision panel */}
-      <div className="w-[42%] max-w-sm flex flex-col bg-gray-900 border-l border-gray-800">
+      <div className="w-[360px] flex-shrink-0 flex flex-col bg-zinc-900 border-l border-zinc-800">
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-gray-800">
+        <div className="px-6 pt-6 pb-4 border-b border-zinc-800">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-white font-semibold text-base">Selecionar Pranchas</h2>
+            <h2 className="text-zinc-100 font-semibold text-lg">Selecionar Pranchas</h2>
             <button
               onClick={() => { setPhase('idle'); pdfDocRef.current = null; pageCacheRef.current.clear(); }}
-              className="text-gray-500 hover:text-gray-300 text-xs border border-gray-700 rounded-lg px-2.5 py-1"
+              className="text-zinc-300 hover:text-zinc-300 text-sm border border-zinc-700 rounded-sm px-2.5 py-1 transition-colors"
             >
               ← Voltar
             </button>
           </div>
-          <p className="text-gray-400 text-xs">
+          <p className="text-zinc-300 text-sm mt-1">
             Página {currentPage + 1} de {totalPages} · {selected.size} selecionadas
           </p>
-
-          {/* Status */}
-          <div className={`mt-3 flex items-center gap-2 text-sm font-semibold ${
-            isIncluded ? 'text-green-400' : 'text-red-400'
+          <div className={`mt-3 flex items-center gap-2 text-base font-medium ${
+            isIncluded ? 'text-violet-400' : 'text-red-400'
           }`}>
-            <span className={`w-2.5 h-2.5 rounded-full ${isIncluded ? 'bg-green-400' : 'bg-red-400'}`} />
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isIncluded ? 'bg-violet-400' : 'bg-red-400'}`} />
             {isIncluded ? 'Esta prancha será analisada' : 'Esta prancha será ignorada'}
           </div>
         </div>
 
         {/* Dot progress */}
-        <div className="px-6 py-3 flex flex-wrap gap-1 border-b border-gray-800">
-          {Array.from({ length: totalPages }, (_, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i, totalPages)}
-              title={`Página ${i + 1}`}
-              className={`rounded-full transition-all ${
-                i === currentPage
-                  ? 'w-3 h-3 bg-white'
-                  : selected.has(i)
-                  ? 'w-2 h-2 bg-blue-400 hover:bg-blue-300'
-                  : 'w-2 h-2 bg-gray-600 hover:bg-gray-500'
-              }`}
-            />
-          ))}
+        <div className="px-6 py-3 flex flex-wrap gap-1.5 border-b border-zinc-800">
+          {Array.from({ length: totalPages }, (_, i) => {
+            const isActive = i === currentPage;
+            const isSelected = selected.has(i);
+            const isCached = cachedPages.has(i);
+            return (
+              <button
+                key={i}
+                onClick={() => goTo(i, totalPages)}
+                title={`Página ${i + 1}`}
+                className={`rounded-full transition-all duration-200 ${
+                  isActive
+                    ? 'w-3 h-3 bg-zinc-50'
+                    : isSelected && isCached
+                    ? 'w-2 h-2 bg-violet-400 hover:bg-violet-300'
+                    : isSelected
+                    ? 'w-2 h-2 bg-violet-800 hover:bg-violet-600 animate-pulse'
+                    : isCached
+                    ? 'w-2 h-2 bg-zinc-600 hover:bg-zinc-400'
+                    : 'w-2 h-2 bg-zinc-800 hover:bg-zinc-600 animate-pulse'
+                }`}
+              />
+            );
+          })}
         </div>
 
         {/* Main buttons */}
-        <div className="flex-1 flex flex-col gap-4 px-6 py-6">
+        <div className="flex-1 flex flex-col gap-3 px-6 py-6">
           <button
             onClick={() => decide(false)}
-            className="flex-1 rounded-2xl bg-red-950 border-2 border-red-700 text-red-400 font-bold text-xl hover:bg-red-900 hover:border-red-500 hover:text-red-300 active:scale-[0.97] transition-all flex flex-col items-center justify-center gap-2"
+            className="flex-1 rounded-sm bg-red-500/5 border-2 border-red-500/30 text-red-400 font-bold text-xl hover:bg-red-500/10 hover:border-red-500/50 active:scale-[0.97] transition-all flex flex-col items-center justify-center gap-2"
           >
-            <span className="text-3xl">✗</span>
+            
             Excluir
           </button>
           <button
             onClick={() => decide(true)}
-            className="flex-1 rounded-2xl bg-green-950 border-2 border-green-700 text-green-400 font-bold text-xl hover:bg-green-900 hover:border-green-500 hover:text-green-300 active:scale-[0.97] transition-all flex flex-col items-center justify-center gap-2"
+            className="flex-1 rounded-sm bg-violet-500/5 border-2 border-violet-500/30 text-violet-400 font-bold text-xl hover:bg-violet-500/10 hover:border-violet-500/50 active:scale-[0.97] transition-all flex flex-col items-center justify-center gap-2"
           >
-            <span className="text-3xl">✓</span>
+            
             Incluir
           </button>
         </div>
 
         {/* Bottom nav */}
-        <div className="px-6 pb-6 flex flex-col gap-2 border-t border-gray-800 pt-4">
+        <div className="px-6 pb-6 flex flex-col gap-2 border-t border-zinc-800 pt-4">
           <button
             onClick={convertSelected}
             disabled={selected.size === 0}
-            className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-500 active:scale-95 transition-all disabled:opacity-40"
+            className="w-full py-3 bg-violet-500 text-white rounded text-base font-semibold hover:bg-violet-400 active:scale-95 transition-all disabled:opacity-30"
           >
             Confirmar {selected.size} pranchas →
           </button>
@@ -463,14 +588,14 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
             <button
               onClick={() => goTo(currentPage - 1, totalPages)}
               disabled={currentPage === 0}
-              className="flex-1 py-2 rounded-lg border border-gray-700 text-xs text-gray-400 hover:bg-gray-800 disabled:opacity-30 transition-all"
+              className="flex-1 py-2 rounded-sm border border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 transition-all"
             >
               ← Anterior
             </button>
             <button
               onClick={() => goTo(currentPage + 1, totalPages)}
               disabled={currentPage === totalPages - 1}
-              className="flex-1 py-2 rounded-lg border border-gray-700 text-xs text-gray-400 hover:bg-gray-800 disabled:opacity-30 transition-all"
+              className="flex-1 py-2 rounded-sm border border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 transition-all"
             >
               Pular →
             </button>
@@ -478,14 +603,14 @@ function StepUpload({ onDone }: { onDone: (blobs: Blob[], texts: string[]) => vo
         </div>
 
         {error && (
-          <p className="mx-6 mb-4 text-xs text-red-400 bg-red-950 border border-red-800 rounded-lg px-3 py-2">{error}</p>
+          <p className="mx-6 mb-4 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-sm px-3 py-2">{error}</p>
         )}
       </div>
     </div>
   );
 }
 
-// ─── Step 2 — Pipeline ────────────────────────────────────────────────────────
+// ─── Step 2 — Processing ──────────────────────────────────────────────────────
 
 async function apiFetchJSON<T>(url: string, init: RequestInit): Promise<T> {
   const r = await fetch(url, init);
@@ -500,15 +625,7 @@ async function apiFetchJSON<T>(url: string, init: RequestInit): Promise<T> {
 type ProcessingPhase = 'idle' | 'running' | 'done' | 'error';
 
 function StepProcessing({
-  imageBlobs,
-  pageTexts,
-  stage1Output,
-  stage2Output,
-  folha,
-  resultado,
-  tokenLogs,
-  onUpdate,
-  onNavigate,
+  imageBlobs, pageTexts, stage1Output, stage2Output, folha, resultado, tokenLogs, onUpdate, onNavigate, converting,
 }: {
   imageBlobs: Blob[];
   pageTexts: string[];
@@ -519,11 +636,17 @@ function StepProcessing({
   tokenLogs: TokenLog[];
   onUpdate: (u: PipelineUpdate) => void;
   onNavigate: (step: 3 | 4) => void;
+  converting: boolean;
 }) {
   const [phase, setPhase] = useState<ProcessingPhase>(resultado ? 'done' : 'idle');
   const [callStep, setCallStep] = useState<1 | 2 | null>(null);
   const [error, setError] = useState('');
   const [openLog, setOpenLog] = useState<1 | 2 | null>(null);
+
+  useEffect(() => {
+    if (imageBlobs.length > 0 && !resultado && phase === 'idle') { run(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageBlobs.length]);
 
   const PRICE_IN = 3 / 1_000_000;
   const PRICE_OUT = 15 / 1_000_000;
@@ -538,7 +661,6 @@ function StepProcessing({
         fd.append('images', b, `page-${i}.jpg`);
         fd.append('pageTexts', pageTexts[i] ?? '');
       });
-
       const r = await fetch('/api/orcamento/chamada-controlada', { method: 'POST', body: fd });
       if (!r.ok) {
         const body = await r.json().catch(() => ({})) as { error?: string };
@@ -546,107 +668,87 @@ function StepProcessing({
       }
       setCallStep(2 as 1 | 2);
       const data = await r.json() as {
-        output1: string;
-        output2: string;
-        folha: FolhaMedicao | null;
-        resultado: ResultadoOrcamento | null;
-        parseError: string | null;
-        usage1: ApiUsage;
-        usage2: ApiUsage;
+        output1: string; output2: string;
+        folha: FolhaMedicao | null; resultado: ResultadoOrcamento | null;
+        parseError: string | null; usage1: ApiUsage; usage2: ApiUsage;
       };
       setCallStep(null);
-
       onUpdate({ stage1Output: data.output1 });
       onUpdate({ stage2Output: data.output2 });
       if (data.folha) onUpdate({ folha: data.folha });
       if (data.resultado) onUpdate({ resultado: data.resultado });
       onUpdate({ tokenLog: { stage: 'Análise (1/2)', usage: data.usage1 } });
       onUpdate({ tokenLog: { stage: 'Revisão + JSON (2/2)', usage: data.usage2 } });
-
       if (data.parseError) setError(`Aviso: ${data.parseError}`);
       setPhase('done');
+      onNavigate(data.folha ? 3 : 4);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
       setPhase('error');
-    } finally {
-      setCallStep(null);
-    }
+    } finally { setCallStep(null); }
   }, [imageBlobs, pageTexts, onUpdate]);
 
   const isDone = phase === 'done' || !!resultado;
 
-  const callLabels = [
-    'Identificando elementos de mármore nas pranchas...',
-    'Revisando medidas e gerando orçamento...',
-  ];
+  // Loading screen
+  if ((converting || phase === 'idle' || phase === 'running') && !resultado) {
+    const label = converting
+      ? 'Preparando imagens...'
+      : callStep === 1 ? 'Analisando projeto...'
+      : callStep === 2 ? 'Gerando orçamento...'
+      : 'Processando...';
+    return (
+      <div className="flex flex-col items-center justify-center gap-8 py-24 animate-fade-in">
+        {/* Gradient spinner */}
+        <div className="relative w-16 h-16 flex items-center justify-center">
+          <div className="spinner-gradient absolute inset-0" style={{ width: 64, height: 64 }} />
+          
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-medium text-zinc-100">{label}</p>
+          <p className="text-base text-zinc-300 mt-2 max-w-xs leading-relaxed">
+            Pode levar de 2 a 5 minutos, a depender do tamanho do projeto
+          </p>
+        </div>
+        {!converting && callStep && (
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <div className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+            Etapa {callStep} de 2
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5 animate-fade-in">
       <div>
-        <h2 className="text-xl font-semibold text-gray-800">Passo 2 — Análise do Projeto</h2>
+        <h2 className="text-xl font-semibold text-zinc-100">Análise do Projeto</h2>
         {imageBlobs.length > 0 ? (
-          <p className="text-sm text-gray-500 mt-1">
-            {imageBlobs.length} {imageBlobs.length === 1 ? 'prancha carregada' : 'pranchas carregadas'}.
+          <p className="text-base text-zinc-300 mt-1">
+            {imageBlobs.length} {imageBlobs.length === 1 ? 'prancha carregada' : 'pranchas carregadas'}
           </p>
         ) : (
-          <p className="text-sm text-amber-600 mt-1">
-            ⚠ PDF não carregado — você pode navegar para Revisão ou Orçamento se tiver dados anteriores.
+          <p className="text-base text-amber-400 mt-1 flex items-center gap-1.5">
+            
+            PDF não carregado — você pode navegar para Revisão ou Orçamento se tiver dados anteriores.
           </p>
         )}
       </div>
 
-      {/* Progress cards (only while running) */}
-      {phase === 'running' && (
-        <div className="flex flex-col gap-2">
-          {([1, 2] as const).map((n) => {
-            const done = callStep !== null && n < callStep;
-            const active = callStep === n;
-            return (
-              <div
-                key={n}
-                className={`flex items-center gap-3 rounded-lg px-4 py-3 border transition-colors ${
-                  done
-                    ? 'bg-green-50 border-green-200'
-                    : active
-                    ? 'bg-blue-50 border-blue-300'
-                    : 'bg-gray-50 border-gray-200'
-                }`}
-              >
-                {done ? (
-                  <span className="text-green-600 text-sm font-bold w-5 flex-shrink-0">✓</span>
-                ) : active ? (
-                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                ) : (
-                  <span className="w-4 h-4 rounded-full border border-gray-300 inline-block flex-shrink-0" />
-                )}
-                <div>
-                  <p className={`text-sm font-medium ${
-                    done ? 'text-green-700' : active ? 'text-blue-700' : 'text-gray-400'
-                  }`}>
-                    Chamada {n}/2
-                  </p>
-                  {active && (
-                    <p className="text-xs text-blue-500 mt-0.5">{callLabels[n - 1]}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Token summary (after done) — dev only */}
+      {/* Token summary — dev only */}
       {IS_DEV && isDone && tokenLogs.length > 0 && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-          <p className="text-sm font-semibold text-green-800 mb-2">✓ Análise concluída</p>
-          <div className="flex gap-4 flex-wrap text-xs text-gray-600">
+        <div className="bg-green-500/10 border border-green-500/20 rounded px-4 py-3">
+          <p className="text-base font-semibold text-green-400 mb-2 flex items-center gap-1.5">
+             Análise concluída
+          </p>
+          <div className="flex gap-4 flex-wrap text-sm text-zinc-400">
             {tokenLogs.map((log) => {
               const cost = log.usage.input_tokens * PRICE_IN + log.usage.output_tokens * PRICE_OUT;
               return (
-                <span key={log.stage} className="text-gray-500">
-                  <span className="font-medium text-gray-700">{log.stage}:</span>{' '}
-                  {(log.usage.input_tokens + log.usage.output_tokens).toLocaleString('pt-BR')} tk
-                  {' '}· ${cost.toFixed(4)}
+                <span key={log.stage} className="text-zinc-300">
+                  <span className="font-medium text-zinc-300">{log.stage}:</span>{' '}
+                  {(log.usage.input_tokens + log.usage.output_tokens).toLocaleString('pt-BR')} tk · ${cost.toFixed(4)}
                 </span>
               );
             })}
@@ -654,52 +756,38 @@ function StepProcessing({
         </div>
       )}
 
-      {/* ── Call Logs — dev only ─────────────────────────────────────────────── */}
+      {/* Call Logs — dev only */}
       {IS_DEV && (stage1Output || stage2Output) && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Logs das chamadas</p>
-          {(
-            [
-              {
-                n: 1 as const,
-                label: 'Chamada 1 — Análise inicial',
-                output: stage1Output,
-                inputDesc: imageBlobs.length > 0
-                  ? `${imageBlobs.length} imagem(ns) + prompt scanner de peças`
-                  : 'Imagens + prompt scanner de peças',
-              },
-              {
-                n: 2 as const,
-                label: 'Chamada 2 — Revisão + JSON',
-                output: stage2Output,
-                inputDesc: 'Imagens + output da chamada 1 + prompt de revisão/dimensionamento',
-              },
-            ] as const
-          ).map(({ n, label, output, inputDesc }) =>
+          <p className="text-sm font-semibold text-zinc-400 uppercase tracking-wide">Logs das chamadas</p>
+          {([
+            { n: 1 as const, label: 'Chamada 1 — Análise inicial', output: stage1Output,
+              inputDesc: imageBlobs.length > 0 ? `${imageBlobs.length} imagem(ns) + prompt scanner de peças` : 'Imagens + prompt' },
+            { n: 2 as const, label: 'Chamada 2 — Revisão + JSON', output: stage2Output,
+              inputDesc: 'Imagens + output da chamada 1 + prompt de revisão/dimensionamento' },
+          ] as const).map(({ n, label, output, inputDesc }) =>
             output ? (
-              <div key={n} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div key={n} className="border border-zinc-800 rounded overflow-hidden">
                 <button
                   onClick={() => setOpenLog((prev) => (prev === n ? null : n))}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 transition-colors text-left"
                 >
-                  <span className="text-sm font-medium text-gray-700">{label}</span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-base font-medium text-zinc-300">{label}</span>
+                  <span className="text-sm text-zinc-400">
                     {openLog === n ? '▲ fechar' : `▼ ver log · ${output.length.toLocaleString('pt-BR')} chars`}
                   </span>
                 </button>
                 {openLog === n && (
-                  <div className="flex flex-col gap-3 px-4 py-3 bg-white border-t border-gray-100">
+                  <div className="flex flex-col gap-3 px-4 py-3 bg-zinc-950 border-t border-zinc-800">
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Input</p>
-                      <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
-                        {inputDesc}
-                      </p>
+                      <p className="text-sm font-semibold text-zinc-400 uppercase tracking-wide mb-1">Input</p>
+                      <p className="text-sm text-zinc-400 bg-zinc-900 border border-zinc-800 rounded px-3 py-2">{inputDesc}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                      <p className="text-sm font-semibold text-zinc-400 uppercase tracking-wide mb-1">
                         Output · {output.length.toLocaleString('pt-BR')} chars
                       </p>
-                      <pre className="text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded px-3 py-2.5 whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono leading-relaxed">
+                      <pre className="text-sm text-zinc-400 bg-zinc-900 border border-zinc-800 rounded px-3 py-2.5 whitespace-pre-wrap break-words max-h-72 overflow-y-auto font-mono leading-relaxed dark-scroll">
                         {output}
                       </pre>
                     </div>
@@ -712,153 +800,422 @@ function StepProcessing({
       )}
 
       {error && (
-        <pre className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
-          {error}
-        </pre>
+        <div className="flex flex-col gap-3">
+          <pre className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded px-4 py-3 whitespace-pre-wrap break-all max-h-40 overflow-y-auto dark-scroll">
+            {error}
+          </pre>
+          <button
+            onClick={run}
+            disabled={imageBlobs.length === 0}
+            className="self-start flex items-center gap-2 px-4 py-2 bg-violet-500 text-white rounded-sm text-base font-medium hover:bg-violet-400 active:scale-95 transition-all disabled:opacity-40"
+          >
+             Tentar novamente
+          </button>
+        </div>
       )}
-
-      <div className="flex flex-wrap gap-3 items-center pt-1">
-        <button
-          onClick={run}
-          disabled={phase === 'running' || imageBlobs.length === 0}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {phase === 'running'
-            ? 'Analisando...'
-            : isDone
-            ? 'Re-analisar'
-            : 'Analisar Projeto →'}
-        </button>
-        {folha && (
-          <button
-            onClick={() => onNavigate(3)}
-            className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 active:scale-95 transition-all"
-          >
-            Ver Revisão →
-          </button>
-        )}
-        {resultado && (
-          <button
-            onClick={() => onNavigate(4)}
-            className="px-5 py-2.5 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-900 active:scale-95 transition-all"
-          >
-            Ver Orçamento →
-          </button>
-        )}
-      </div>
     </div>
   );
 }
 
 // ─── Step 3 — Review ──────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<ItemMedicao['status'], { label: string; color: string; dot: string }> = {
-  confirmado: { label: '100% confirmado',              color: 'text-green-700 bg-green-50 border-green-200', dot: 'bg-green-500' },
-  parcial:    { label: 'Estimativa — confirmar in loco', color: 'text-blue-700 bg-blue-50 border-blue-200',   dot: 'bg-blue-400'  },
-  aguardando: { label: 'Mármore não identificado',      color: 'text-red-700 bg-red-50 border-red-200',      dot: 'bg-red-400'   },
+const STATUS_LABEL: Record<ItemMedicao['status'], { label: string; color: string; icon: string; badge: string }> = {
+  confirmado: {
+    label: 'confirmado',
+    color: 'text-zinc-300',
+    icon: '✓',
+    badge: 'text-zinc-400 bg-zinc-800 border-zinc-700',
+  },
+  parcial: {
+    label: 'Estimativa',
+    color: 'text-zinc-400',
+    icon: '−',
+    badge: 'text-zinc-400 bg-zinc-800 border-zinc-700',
+  },
+  aguardando: {
+    label: 'Não identificado',
+    color: 'text-zinc-300',
+    icon: '✕',
+    badge: 'text-zinc-300 bg-zinc-800 border-zinc-700',
+  },
 };
 
 type DimEdit = { c: number; l: number };
 
+const SERVICE_CATALOG: { nome: string; unidade: 'un' | 'ml' }[] = [
+  { nome: 'Rebaixo Italiano cozinha',      unidade: 'un' },
+  { nome: 'Rebaixo Italiano lavanderia',   unidade: 'un' },
+  { nome: 'Rebaixo Italiano outros',       unidade: 'un' },
+  { nome: 'Recorte cooktop',               unidade: 'un' },
+  { nome: 'Furo cuba embutir',             unidade: 'un' },
+  { nome: 'Furo torneira',                 unidade: 'un' },
+  { nome: 'Furo dispenser',               unidade: 'un' },
+  { nome: 'Furo para torre de tomada',     unidade: 'un' },
+  { nome: 'Borda Reta Meia Esquadria',     unidade: 'ml' },
+  { nome: 'Acabamento Slim',               unidade: 'un' },
+  { nome: 'Instalacao tampo sobre base',   unidade: 'ml' },
+  { nome: 'Instalacao rodape',             unidade: 'ml' },
+  { nome: 'Instalacao sobre movel',        unidade: 'ml' },
+  { nome: 'Instalacao revestimento',       unidade: 'ml' },
+  { nome: 'Canaleta LED',                  unidade: 'ml' },
+  { nome: 'Cuba esculpida simples',        unidade: 'un' },
+  { nome: 'Cuba esculpida com bandeja',    unidade: 'un' },
+  { nome: 'Champanheira',                  unidade: 'un' },
+  { nome: 'Tampa removivel',              unidade: 'un' },
+];
+
 function ItemCard({
-  item,
-  dimEdit,
-  onEditDims,
-  onRemove,
+  item, dimEdit, servicoEdit, statusEdit, tipoEdit, onEditDims, onEditServicos, onConfirm, onMarkPartial, onEditTipo, onEditModulo, onRemove,
 }: {
   item: ItemMedicao;
   dimEdit: DimEdit | undefined;
+  servicoEdit: Servico[] | undefined;
+  statusEdit: ItemMedicao['status'] | undefined;
+  tipoEdit: string | undefined;
   onEditDims: (id: number, d: DimEdit) => void;
+  onEditServicos: (id: number, svcs: Servico[]) => void;
+  onConfirm: (id: number) => void;
+  onMarkPartial: (id: number) => void;
+  onEditTipo: (id: number, tipo: string) => void;
+  onEditModulo: (id: number, modulo: string) => void;
   onRemove: (id: number) => void;
 }) {
-  const st = STATUS_LABEL[item.status];
-  const hasDims = item.comprimento_m != null && item.largura_m != null;
+  const [showAddSvc, setShowAddSvc] = useState(false);
+  const [newNome, setNewNome] = useState('');
+  const [newQtd, setNewQtd] = useState('1');
+  const [newUnit, setNewUnit] = useState<'un' | 'ml'>('un');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+  const [confirmRemoveIdx, setConfirmRemoveIdx] = useState<number | null>(null);
+  const [confirmRemoveCard, setConfirmRemoveCard] = useState(false);
+  const [editingTipo, setEditingTipo] = useState(false);
+  const [tipoInput, setTipoInput] = useState('');
+  const [showTipoDropdown, setShowTipoDropdown] = useState(false);
+  const [editingModulo, setEditingModulo] = useState(false);
+  const [moduloInput, setModuloInput] = useState('');
+  const TIPO_OPTIONS = ['tampo', 'rodape', 'saia', 'revestimento', 'prateleira', 'painel', 'outro'];
+  const [editingSvcIdx, setEditingSvcIdx] = useState<number | null>(null);
+  const [editNome, setEditNome] = useState('');
+  const [editQtd, setEditQtd] = useState('');
+  const [editUnit, setEditUnit] = useState<'un' | 'ml'>('un');
+  const [showEditDropdown, setShowEditDropdown] = useState(false);
 
+  const effectiveStatus = statusEdit ?? item.status;
+  const effectiveTipo = tipoEdit ?? item.tipo;
+  const st = STATUS_LABEL[effectiveStatus];
+  const hasDims = item.comprimento_m != null && item.largura_m != null;
   const curC = dimEdit?.c ?? item.comprimento_m ?? 0;
   const curL = dimEdit?.l ?? item.largura_m ?? 0;
   const computedArea = hasDims ? parseFloat((curC * curL).toFixed(4)) : (item.area_m2 ?? 0);
   const isEdited = dimEdit !== undefined;
+  const currentServicos = servicoEdit ?? item.servicos ?? [];
+
+  const startEditSvc = (i: number) => {
+    const s = currentServicos[i];
+    setEditingSvcIdx(i); setEditNome(s.nome); setEditQtd(String(s.qtd)); setEditUnit(s.unidade); setShowEditDropdown(false);
+  };
+
+  const confirmEditSvc = () => {
+    if (editingSvcIdx === null || !editNome.trim()) return;
+    const updated = currentServicos.map((s, i) =>
+      i === editingSvcIdx ? { nome: editNome.trim(), qtd: parseFloat(editQtd) || 1, unidade: editUnit } : s
+    );
+    onEditServicos(item.id, updated);
+    setEditingSvcIdx(null);
+  };
+
+  const filteredEditCatalog = SERVICE_CATALOG.filter((s) => s.nome.toLowerCase().includes(editNome.toLowerCase()));
+  const removeServico = (idx: number) => onEditServicos(item.id, currentServicos.filter((_, i) => i !== idx));
+  const filteredCatalog = SERVICE_CATALOG.filter((s) => s.nome.toLowerCase().includes(newNome.toLowerCase()));
+
+  const pickCatalogItem = (s: { nome: string; unidade: 'un' | 'ml' }) => {
+    setNewNome(s.nome); setNewUnit(s.unidade); setShowDropdown(false);
+  };
+
+  const confirmAddSvc = () => {
+    if (!newNome.trim()) return;
+    const svc: Servico = { nome: newNome.trim(), qtd: parseFloat(newQtd) || 1, unidade: newUnit };
+    onEditServicos(item.id, [...currentServicos, svc]);
+    setNewNome(''); setNewQtd('1'); setNewUnit('un'); setShowAddSvc(false); setShowDropdown(false);
+  };
+
+  const inputBase = 'bg-zinc-800 border rounded text-right font-mono text-base focus:outline-none focus:ring-1 focus:ring-violet-500 text-zinc-100 px-1.5 py-0.5';
 
   return (
-    <div className={`rounded-lg border p-3 ${st.color}`}>
-      <div className="flex items-start gap-2">
-        <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${st.dot}`} />
+    <div id={`item-${item.id}`} className="rounded border bg-zinc-800/60 border-zinc-700/50 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.4)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.6)] transition-all hover:border-zinc-600/60 hover:-translate-y-px animate-fade-in">
+      <div className="flex items-start gap-3">
+        {/* Status icon */}
+        <span className="mt-0.5 flex-shrink-0 text-base font-bold text-violet-400 w-4 text-center leading-none">{st.icon}</span>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold">{item.modulo}</span>
-            <span className="text-xs opacity-70">{item.tipo}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${st.color}`}>
-              {st.label}
-            </span>
-            {isEdited && <span className="text-blue-600 text-xs font-medium">editado</span>}
+          {/* Header row — module name + actions */}
+          <div className="flex items-start justify-between gap-2">
+            {editingModulo ? (
+              <input
+                autoFocus
+                type="text"
+                value={moduloInput}
+                onChange={(e) => setModuloInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { onEditModulo(item.id, moduloInput || item.modulo); setEditingModulo(false); }
+                  if (e.key === 'Escape') setEditingModulo(false);
+                }}
+                onBlur={() => { onEditModulo(item.id, moduloInput || item.modulo); setEditingModulo(false); }}
+                className="text-lg font-semibold bg-zinc-800 border border-violet-500 rounded px-2 py-0.5 text-zinc-100 focus:outline-none flex-1 min-w-0"
+              />
+            ) : (
+              <button
+                onClick={() => { setModuloInput(item.modulo); setEditingModulo(true); }}
+                className="text-lg font-semibold text-zinc-100 leading-snug hover:text-zinc-300 transition-colors text-left"
+                title="Clique para editar"
+              >
+                {item.modulo}
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+              {confirmRemoveCard ? (
+                <>
+                  <span className="text-sm text-red-400 font-medium">Remover?</span>
+                  <button onClick={() => { onRemove(item.id); setConfirmRemoveCard(false); }} className="text-sm font-semibold text-red-400 hover:text-red-300 transition-colors">Sim</button>
+                  <button onClick={() => setConfirmRemoveCard(false)} className="text-sm text-zinc-300 hover:text-zinc-200 transition-colors">Não</button>
+                </>
+              ) : (
+                <>
+                  {effectiveStatus !== 'confirmado' && (
+                    <button
+                      onClick={() => onConfirm(item.id)}
+                      className="text-sm px-2 py-0.5 rounded border font-medium bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
+                    >
+                      Validar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setConfirmRemoveCard(true)}
+                    className="text-zinc-400 hover:text-red-400 transition-colors text-base leading-none"
+                    title="Remover item"
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
-          {hasDims ? (
-            /* C × L → area */
-            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-xs font-medium">
-              <span className="opacity-60">{item.material} · {item.espessura_cm ?? '?'}cm</span>
-              <span className="opacity-40 mx-0.5">|</span>
-              <label className="flex items-center gap-1">
-                C:
+          {/* Sub-row — tipo editável + status badge */}
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            {editingTipo ? (
+              <div className="relative">
                 <input
-                  type="number" step="0.01" min="0"
-                  value={curC}
-                  onChange={(e) => onEditDims(item.id, { c: parseFloat(e.target.value) || 0, l: curL })}
-                  className={`w-14 px-1.5 py-0.5 rounded border text-right font-mono ${
-                    isEdited ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-gray-300 bg-white text-gray-800'
-                  }`}
+                  autoFocus
+                  type="text"
+                  value={tipoInput}
+                  onChange={(e) => { setTipoInput(e.target.value); setShowTipoDropdown(true); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { onEditTipo(item.id, tipoInput || effectiveTipo); setEditingTipo(false); }
+                    if (e.key === 'Escape') setEditingTipo(false);
+                  }}
+                  onBlur={() => { setTimeout(() => { onEditTipo(item.id, tipoInput || effectiveTipo); setEditingTipo(false); setShowTipoDropdown(false); }, 150); }}
+                  className="bg-zinc-800 border border-violet-500 rounded px-2 py-0.5 text-sm text-zinc-100 focus:outline-none w-32"
                 />
-                <span className="opacity-50">m</span>
-              </label>
-              <span className="opacity-40">×</span>
-              <label className="flex items-center gap-1">
-                L:
-                <input
-                  type="number" step="0.01" min="0"
-                  value={curL}
-                  onChange={(e) => onEditDims(item.id, { c: curC, l: parseFloat(e.target.value) || 0 })}
-                  className={`w-14 px-1.5 py-0.5 rounded border text-right font-mono ${
-                    isEdited ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-gray-300 bg-white text-gray-800'
-                  }`}
-                />
-                <span className="opacity-50">m</span>
-              </label>
-              <span className="opacity-40">=</span>
-              <span className={`font-mono font-semibold ${isEdited ? 'text-blue-700' : ''}`}>
-                {computedArea} m²
-              </span>
-            </div>
-          ) : (
-            /* fallback: area only */
-            <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs font-medium">
-              <span className="opacity-60">{item.material} · {item.espessura_cm ?? '?'}cm</span>
-              <span className="font-mono">{computedArea} m²</span>
-            </div>
-          )}
+                {showTipoDropdown && (
+                  <ul className="absolute z-20 left-0 top-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-sm shadow-xl text-sm dark-scroll" style={{ minWidth: '130px' }}>
+                    {TIPO_OPTIONS.filter(t => t.includes(tipoInput.toLowerCase())).map(t => (
+                      <li key={t}>
+                        <button type="button" onMouseDown={() => { onEditTipo(item.id, t); setEditingTipo(false); setShowTipoDropdown(false); }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-700 text-zinc-200">
+                          {t}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setTipoInput(effectiveTipo); setEditingTipo(true); setShowTipoDropdown(true); }}
+                className="text-base text-zinc-400 hover:text-zinc-200 transition-colors text-left"
+                title="Clique para editar"
+              >
+                {effectiveTipo}
+              </button>
+            )}
+            {effectiveStatus !== 'confirmado' && (
+              <>
+                <span className="text-zinc-600 text-sm">·</span>
+                <span className={`text-sm px-2 py-0.5 rounded border font-medium ${st.badge}`}>
+                  {st.label}
+                </span>
+              </>
+            )}
+            {isEdited && <span className="text-violet-400 text-sm font-medium">editado</span>}
+          </div>
 
-          {(item.servicos ?? []).length > 0 && (
-            <p className="text-xs opacity-60 mt-1">
-              {item.servicos.map((s) => `${s.nome}${s.unidade === 'ml' ? ` ${s.qtd}ml` : ''}`).join(' · ')}
-            </p>
-          )}
+          {/* Services */}
+          <ul className="mt-2.5 flex flex-col gap-0.5">
+            {currentServicos.map((s, i) => (
+              <li key={i} className="text-base">
+                {editingSvcIdx === i ? (
+                  <div className="flex flex-col gap-1.5 mt-1">
+                    <div className="flex gap-1.5 flex-wrap items-center">
+                      <div className="relative flex-1 min-w-0">
+                        <input
+                          autoFocus type="text" value={editNome}
+                          onChange={(e) => { setEditNome(e.target.value); setShowEditDropdown(true); }}
+                          onFocus={() => setShowEditDropdown(true)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') confirmEditSvc(); if (e.key === 'Escape') setEditingSvcIdx(null); }}
+                          className="w-full bg-zinc-800 border border-violet-500 rounded px-2 py-1 text-base text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                        {showEditDropdown && filteredEditCatalog.length > 0 && (
+                          <ul className="absolute z-20 left-0 right-0 top-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-sm shadow-xl max-h-44 overflow-y-auto text-base dark-scroll">
+                            {filteredEditCatalog.map((opt) => (
+                              <li key={opt.nome}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => { e.preventDefault(); setEditNome(opt.nome); setEditUnit(opt.unidade); setShowEditDropdown(false); }}
+                                  className="w-full text-left px-3 py-2 hover:bg-zinc-700 flex items-center justify-between gap-2 text-zinc-200"
+                                >
+                                  <span>{opt.nome}</span>
+                                  <span className="text-sm text-zinc-300 flex-shrink-0">{opt.unidade}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <input type="number" value={editQtd} onChange={(e) => setEditQtd(e.target.value)}
+                        className="w-14 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-base text-right text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500" />
+                      <select value={editUnit} onChange={(e) => setEditUnit(e.target.value as 'un' | 'ml')}
+                        className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-base text-zinc-200 focus:outline-none">
+                        <option value="un">un</option>
+                        <option value="ml">ml</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button onClick={confirmEditSvc} className="px-3 py-1 bg-violet-500 text-white rounded text-sm font-medium hover:bg-violet-400 transition-colors">Salvar</button>
+                      <button onClick={() => setEditingSvcIdx(null)} className="px-3 py-1 border border-zinc-700 text-zinc-400 rounded text-sm hover:bg-zinc-800 transition-colors">Cancelar</button>
+                    </div>
+                  </div>
+                ) : confirmRemoveIdx === i ? (
+                  <div className="flex items-center gap-1.5 py-0.5">
+                    <span className="text-sm text-red-400 font-medium">Remover?</span>
+                    <button onClick={() => { removeServico(i); setConfirmRemoveIdx(null); }} className="text-sm font-semibold text-red-400 hover:text-red-300 transition-colors">Sim</button>
+                    <button onClick={() => setConfirmRemoveIdx(null)} className="text-sm text-zinc-300 hover:text-zinc-300 transition-colors">Não</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 group">
+                    <button onClick={() => setConfirmRemoveIdx(i)} title="Remover"
+                      className="text-zinc-400 hover:text-red-400 transition-all flex-shrink-0">✕</button>
+                    <button onClick={() => startEditSvc(i)} title="Editar"
+                      className="text-zinc-400 hover:text-violet-400 transition-all flex-shrink-0">✎</button>
+                    <span className="w-1 h-1 rounded-full bg-zinc-600 flex-shrink-0" />
+                    <span className="text-base text-zinc-400">{s.nome}{s.unidade === 'ml' ? ` ${s.qtd}ml` : ''}</span>
+                  </div>
+                )}
+              </li>
+            ))}
+            {showAddSvc ? (
+              <li className="mt-2 flex flex-col gap-1.5">
+                <div className="flex gap-1.5 flex-wrap items-center">
+                  <div ref={comboRef} className="relative flex-1 min-w-0">
+                    <input
+                      autoFocus type="text" placeholder="Nome do serviço" value={newNome}
+                      onChange={(e) => { setNewNome(e.target.value); setShowDropdown(true); }}
+                      onFocus={() => setShowDropdown(true)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') confirmAddSvc(); if (e.key === 'Escape') { setShowDropdown(false); setShowAddSvc(false); } }}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-base text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-violet-500"
+                    />
+                    {showDropdown && filteredCatalog.length > 0 && (
+                      <ul className="absolute z-20 left-0 right-0 top-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-sm shadow-xl max-h-52 overflow-y-auto text-base dark-scroll">
+                        {filteredCatalog.map((s) => (
+                          <li key={s.nome}>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => { e.preventDefault(); pickCatalogItem(s); }}
+                              className="w-full text-left px-3 py-2 hover:bg-zinc-700 flex items-center justify-between gap-2 text-zinc-200"
+                            >
+                              <span>{s.nome}</span>
+                              <span className="text-sm text-zinc-300 flex-shrink-0">{s.unidade}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <input type="number" placeholder="Qtd" value={newQtd} onChange={(e) => setNewQtd(e.target.value)}
+                    className="w-14 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-base text-right text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500" />
+                  <select value={newUnit} onChange={(e) => setNewUnit(e.target.value as 'un' | 'ml')}
+                    className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-1 text-base text-zinc-200 focus:outline-none focus:ring-1 focus:ring-violet-500">
+                    <option value="un">un</option>
+                    <option value="ml">ml</option>
+                  </select>
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={confirmAddSvc} className="px-3 py-1 bg-violet-500 text-white rounded text-sm font-medium hover:bg-violet-400 transition-colors">
+                    Adicionar
+                  </button>
+                  <button onClick={() => { setShowAddSvc(false); setShowDropdown(false); }}
+                    className="px-3 py-1 border border-zinc-700 text-zinc-400 rounded text-sm hover:bg-zinc-800 transition-colors">
+                    Cancelar
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li>
+                <button onClick={() => setShowAddSvc(true)} className="mt-1 text-sm text-zinc-400 hover:text-violet-400 transition-colors flex items-center gap-1">
+                  + Adicionar serviço
+                </button>
+              </li>
+            )}
+          </ul>
+
+          {/* Pendências */}
           {(item.pendencias ?? []).length > 0 && (
-            <ul className="mt-1.5 flex flex-col gap-0.5">
+            <ul className="mt-2.5 flex flex-col gap-1">
               {item.pendencias.map((p, i) => (
-                <li key={i} className="text-xs flex gap-1 items-start">
-                  <span className="opacity-50 shrink-0">⚠</span>
-                  <span className="opacity-80">{p}</span>
+                <li key={i} className="text-base flex gap-1.5 items-start text-zinc-300">
+                  
+                  <span>{p}</span>
                 </li>
               ))}
             </ul>
           )}
+
+          {/* Dimensions — material + C/L abaixo dos serviços */}
+          {hasDims ? (
+            <div className="mt-3 pt-3 border-t border-zinc-700/50 flex items-center gap-1.5 flex-wrap text-base">
+              <span className="text-zinc-400">{item.material} · {item.espessura_cm ?? '?'}cm</span>
+              <span className="text-zinc-600 mx-0.5">|</span>
+              <label className="flex items-center gap-1 text-zinc-400">
+                C:
+                <input
+                  type="number" step="0.01" min="0" value={curC}
+                  onChange={(e) => onEditDims(item.id, { c: parseFloat(e.target.value) || 0, l: curL })}
+                  className={`w-16 ${inputBase} ${isEdited ? 'border-violet-500 bg-violet-500/10 text-violet-300' : 'border-zinc-700'}`}
+                />
+                <span className="text-zinc-400">m</span>
+              </label>
+              <span className="text-zinc-500">×</span>
+              <label className="flex items-center gap-1 text-zinc-400">
+                L:
+                <input
+                  type="number" step="0.01" min="0" value={curL}
+                  onChange={(e) => onEditDims(item.id, { c: curC, l: parseFloat(e.target.value) || 0 })}
+                  className={`w-16 ${inputBase} ${isEdited ? 'border-violet-500 bg-violet-500/10 text-violet-300' : 'border-zinc-700'}`}
+                />
+                <span className="text-zinc-400">m</span>
+              </label>
+              <span className="text-zinc-500">=</span>
+              <span className={`font-mono font-semibold ${isEdited ? 'text-violet-400' : 'text-zinc-300'}`}>
+                {computedArea} m²
+              </span>
+            </div>
+          ) : (
+            <div className="mt-3 pt-3 border-t border-zinc-700/50 flex items-center gap-3 flex-wrap text-base">
+              <span className="text-zinc-400">{item.material} · {item.espessura_cm ?? '?'}cm</span>
+              <span className="font-mono text-zinc-300">{computedArea} m²</span>
+            </div>
+          )}
         </div>
-        <button
-          onClick={() => onRemove(item.id)}
-          title="Remover item"
-          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors text-xs"
-        >
-          ✕
-        </button>
       </div>
     </div>
   );
@@ -869,31 +1226,50 @@ let _nextId = Date.now();
 function nextId() { return ++_nextId; }
 
 function AddItemForm({
-  defaultAmbiente,
-  defaultMaterial,
-  onAdd,
-  onCancel,
+  defaultAmbiente, defaultMaterial, ambientes, onAdd, onCancel,
 }: {
   defaultAmbiente: string;
   defaultMaterial: string;
+  ambientes: string[];
   onAdd: (item: ItemMedicao) => void;
   onCancel: () => void;
 }) {
   const [modulo, setModulo] = useState('');
-  const [tipo, setTipo] = useState<ItemMedicao['tipo']>('tampo');
+  const [ambiente, setAmbiente] = useState(defaultAmbiente);
+  const [tipo, setTipo] = useState('tampo');
   const [comp, setComp] = useState('');
   const [larg, setLarg] = useState('');
-  const computedArea = parseFloat(((parseFloat(comp) || 0) * (parseFloat(larg) || 0)).toFixed(4));
+  const [showAmbienteList, setShowAmbienteList] = useState(false);
+  const [showTipoList, setShowTipoList] = useState(false);
+
+  const TIPO_OPTIONS = ['tampo', 'rodape', 'saia', 'revestimento', 'prateleira', 'outro'];
+
+  // ATM-style mask: digits fill right-to-left, always 2 decimal places
+  // "2" → "0.02", "20" → "0.20", "200" → "2.00", "2914" → "29.14"
+  const applyDecimalMask = (raw: string) => {
+    const digits = raw.replace(/[^\d]/g, '');
+    if (!digits) return '';
+    const padded = digits.padStart(3, '0');
+    const intPart = padded.slice(0, padded.length - 2).replace(/^0+(?=\d)/, '') || '0';
+    const decPart = padded.slice(-2);
+    return `${intPart}.${decPart}`;
+  };
+  const handleDimChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setter(applyDecimalMask(e.target.value));
+  };
+
+  const parseNum = (v: string) => parseFloat(v.replace(',', '.')) || 0;
+  const computedArea = parseFloat((parseNum(comp) * parseNum(larg)).toFixed(4));
 
   const handleAdd = () => {
     if (!modulo || !comp || !larg) return;
-    const c = parseFloat(comp) || 0;
-    const l = parseFloat(larg) || 0;
+    const c = parseNum(comp);
+    const l = parseNum(larg);
     onAdd({
       id: nextId(),
       prancha_idx: null,
       status: 'confirmado',
-      ambiente: defaultAmbiente,
+      ambiente: ambiente || 'Outros',
       modulo,
       tipo,
       material: defaultMaterial,
@@ -904,68 +1280,102 @@ function AddItemForm({
       servicos: [],
       pendencias: [],
     } as ItemMedicao);
-    setModulo('');
-    setComp('');
-    setLarg('');
+    setModulo(''); setComp(''); setLarg('');
   };
 
+  const inputCls = 'bg-zinc-800 border border-zinc-700 rounded-sm px-2.5 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-violet-500';
+
+  const filteredAmbientes = ambientes.filter(a => a.toLowerCase().includes(ambiente.toLowerCase()));
+  const filteredTipos = TIPO_OPTIONS.filter(t => t.toLowerCase().includes(tipo.toLowerCase()));
+
   return (
-    <div className="rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-3 flex flex-col gap-2">
-      <p className="text-xs font-semibold text-blue-700">Adicionar item — {defaultAmbiente}</p>
+    <div className="rounded border-2 border-dashed border-violet-500/30 bg-violet-500/5 p-4 flex flex-col gap-3">
+      <p className="text-sm font-semibold text-violet-400 flex items-center gap-1.5">
+        + Adicionar item
+      </p>
       <div className="flex gap-2 flex-wrap">
-        <input
-          type="text"
-          placeholder="Nome do módulo"
-          value={modulo}
-          onChange={(e) => setModulo(e.target.value)}
-          className="flex-1 min-w-0 border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-        />
-        <select
-          value={tipo}
-          onChange={(e) => setTipo(e.target.value as ItemMedicao['tipo'])}
-          className="border border-gray-300 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-        >
-          <option value="tampo">tampo</option>
-          <option value="rodape">rodape</option>
-          <option value="saia">saia</option>
-          <option value="revestimento">revestimento</option>
-          <option value="prateleira">prateleira</option>
-          <option value="outro">outro</option>
-        </select>
+        <input type="text" placeholder="Nome do módulo" value={modulo} onChange={(e) => setModulo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+          className={`flex-1 min-w-32 ${inputCls}`} />
+
+        {/* Ambiente com lista */}
+        <div className="relative w-36">
+          <input
+            type="text" placeholder="Ambiente" value={ambiente}
+            onChange={(e) => { setAmbiente(e.target.value); setShowAmbienteList(true); }}
+            onFocus={() => setShowAmbienteList(true)}
+            onBlur={() => setTimeout(() => setShowAmbienteList(false), 150)}
+            className={`w-full ${inputCls}`}
+          />
+          {showAmbienteList && filteredAmbientes.length > 0 && (
+            <ul className="absolute z-20 left-0 right-0 top-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-sm shadow-xl max-h-40 overflow-y-auto text-sm dark-scroll">
+              {filteredAmbientes.map(a => (
+                <li key={a}>
+                  <button type="button" onMouseDown={() => { setAmbiente(a); setShowAmbienteList(false); }}
+                    className="w-full text-left px-3 py-2 hover:bg-zinc-700 text-zinc-200">
+                    {a}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Tipo com lista */}
+        <div className="relative w-36">
+          <input
+            type="text" placeholder="Tipo" value={tipo}
+            onChange={(e) => { setTipo(e.target.value); setShowTipoList(true); }}
+            onFocus={() => setShowTipoList(true)}
+            onBlur={() => setTimeout(() => setShowTipoList(false), 150)}
+            className={`w-full ${inputCls}`}
+          />
+          {showTipoList && filteredTipos.length > 0 && (
+            <ul className="absolute z-20 left-0 right-0 top-full mt-0.5 bg-zinc-800 border border-zinc-700 rounded-sm shadow-xl max-h-40 overflow-y-auto text-sm dark-scroll">
+              {filteredTipos.map(t => (
+                <li key={t}>
+                  <button type="button" onMouseDown={() => { setTipo(t); setShowTipoList(false); }}
+                    className="w-full text-left px-3 py-2 hover:bg-zinc-700 text-zinc-200">
+                    {t}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-      <div className="flex gap-2 flex-wrap items-center text-xs font-medium">
+      <div className="flex gap-2 flex-wrap items-center text-sm font-medium text-zinc-400">
         <label className="flex items-center gap-1">
           C:
-          <input type="number" step="0.01" min="0" placeholder="0.00" value={comp}
-            onChange={(e) => setComp(e.target.value)}
-            className="w-16 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-right font-mono"
+          <input
+            type="text" inputMode="decimal" placeholder="0.00" value={comp}
+            onChange={handleDimChange(setComp)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+            className="w-20 bg-zinc-800 border border-zinc-700 rounded-sm px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-500 text-right font-mono text-zinc-100"
           />
-          <span className="opacity-50">m</span>
+          <span className="text-zinc-400">m</span>
         </label>
-        <span className="opacity-40">×</span>
+        <span className="text-zinc-500">×</span>
         <label className="flex items-center gap-1">
           L:
-          <input type="number" step="0.01" min="0" placeholder="0.00" value={larg}
-            onChange={(e) => setLarg(e.target.value)}
-            className="w-16 border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-right font-mono"
+          <input
+            type="text" inputMode="decimal" placeholder="0.00" value={larg}
+            onChange={handleDimChange(setLarg)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+            className="w-20 bg-zinc-800 border border-zinc-700 rounded-sm px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-500 text-right font-mono text-zinc-100"
           />
-          <span className="opacity-50">m</span>
+          <span className="text-zinc-400">m</span>
         </label>
-        <span className="opacity-40">=</span>
-        <span className="font-mono font-semibold text-blue-700">{computedArea} m²</span>
+        <span className="text-zinc-500">=</span>
+        <span className="font-mono font-semibold text-violet-400">{computedArea} m²</span>
       </div>
       <div className="flex gap-2 justify-end">
-        <button
-          onClick={onCancel}
-          className="text-xs px-3 py-1 rounded-md border border-gray-300 text-gray-500 hover:bg-gray-100"
-        >
+        <button onClick={onCancel}
+          className="text-sm px-3 py-1.5 rounded-sm border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors">
           Cancelar
         </button>
-        <button
-          onClick={handleAdd}
-          disabled={!modulo || !comp || !larg}
-          className="text-xs px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
-        >
+        <button onClick={handleAdd} disabled={!modulo || !comp || !larg}
+          className="text-sm px-3 py-1.5 rounded-sm bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition-colors">
           Adicionar
         </button>
       </div>
@@ -974,24 +1384,25 @@ function AddItemForm({
 }
 
 function StepReview({
-  folha,
-  imageBlobs,
-  onDone,
+  folha, imageBlobs, flushRef, onDone,
 }: {
   folha: FolhaMedicao;
   imageBlobs: Blob[];
+  flushRef: React.MutableRefObject<() => void>;
   onDone: (updated: FolhaMedicao) => void;
 }) {
   const [edits, setEdits] = useState<Record<number, DimEdit>>({});
+  const [servicoEdits, setServicosEdits] = useState<Record<number, Servico[]>>({});
+  const [statusEdits, setStatusEdits] = useState<Record<number, ItemMedicao['status']>>({});
+  const [tipoEdits, setTipoEdits] = useState<Record<number, string>>({});
+  const [moduloEdits, setModuloEdits] = useState<Record<number, string>>({});
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
   const [addedItems, setAddedItems] = useState<ItemMedicao[]>([]);
   const [showAddFormFor, setShowAddFormFor] = useState<string | null>(null);
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   const [zoomLabel, setZoomLabel] = useState('');
-  const [saving, setSaving] = useState(false);
   const [viewingImageIdx, setViewingImageIdx] = useState(0);
 
-  // Create object URLs in an effect so they are properly revoked even in React Strict Mode
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   useEffect(() => {
     const urls = imageBlobs.map((b) => {
@@ -1003,212 +1414,209 @@ function StepReview({
   }, [imageBlobs]);
 
   const currentViewUrl = imageUrls[viewingImageIdx] ?? null;
-
   const applyEdit = (id: number, d: DimEdit) => setEdits((prev) => ({ ...prev, [id]: d }));
-
+  const applyServicos = (id: number, svcs: Servico[]) => setServicosEdits((prev) => ({ ...prev, [id]: svcs }));
+  const applyTipo = (id: number, tipo: string) => setTipoEdits((prev) => ({ ...prev, [id]: tipo }));
+  const applyModulo = (id: number, modulo: string) => setModuloEdits((prev) => ({ ...prev, [id]: modulo }));
+  const confirmItem = (id: number) => setStatusEdits((prev) => ({ ...prev, [id]: 'confirmado' }));
+  const markPartial = (id: number) => setStatusEdits((prev) => ({ ...prev, [id]: 'parcial' }));
   const removeItem = (id: number) => setRemovedIds((prev) => new Set([...prev, id]));
-
-  const addItemToGroup = (item: ItemMedicao) => {
-    setAddedItems((prev) => [...prev, item]);
-    setShowAddFormFor(null);
-  };
-
-  // Group items by prancha_idx (excluding removed)
-  const grouped = useMemo(() => {
-    const allItems = [...folha.itens, ...addedItems];
-    const visible = allItems.filter((i) => !removedIds.has(i.id));
-    const byPage: Map<number, ItemMedicao[]> = new Map();
-    const orphans: ItemMedicao[] = [];
-    for (const item of visible) {
-      const idx = item.prancha_idx;
-      if (idx != null && idx >= 0 && idx < imageBlobs.length) {
-        if (!byPage.has(idx)) byPage.set(idx, []);
-        byPage.get(idx)!.push(item);
-      } else {
-        orphans.push(item);
-      }
-    }
-    return {
-      pages: [...byPage.entries()].sort((a, b) => a[0] - b[0]),
-      orphans,
-    };
-  }, [folha.itens, addedItems, removedIds, imageBlobs.length]);
+  const addItemToGroup = (item: ItemMedicao) => { setAddedItems((prev) => [...prev, item]); setShowAddFormFor(null); };
 
   const visibleItems = useMemo(
     () => [...folha.itens, ...addedItems].filter((i) => !removedIds.has(i.id)),
     [folha.itens, addedItems, removedIds]
   );
 
+  // Group by ambiente
+  const grouped = useMemo(() => {
+    const map = new Map<string, ItemMedicao[]>();
+    for (const item of visibleItems) {
+      const env = item.ambiente || 'Outros';
+      if (!map.has(env)) map.set(env, []);
+      map.get(env)!.push(item);
+    }
+    return [...map.entries()];
+  }, [visibleItems]);
+
   const countByStatus = {
-    confirmado: visibleItems.filter((i) => i.status === 'confirmado').length,
-    parcial: visibleItems.filter((i) => i.status === 'parcial').length,
-    aguardando: visibleItems.filter((i) => i.status === 'aguardando').length,
+    confirmado: visibleItems.filter((i) => (statusEdits[i.id] ?? i.status) === 'confirmado').length,
+    parcial: visibleItems.filter((i) => (statusEdits[i.id] ?? i.status) === 'parcial').length,
+    aguardando: visibleItems.filter((i) => (statusEdits[i.id] ?? i.status) === 'aguardando').length,
   };
   const totalPendencias = visibleItems.reduce((s, i) => s + (i.pendencias?.length ?? 0), 0);
-  const hasChanges = Object.keys(edits).length > 0 || removedIds.size > 0 || addedItems.length > 0;
 
   const buildUpdatedFolha = (): FolhaMedicao => ({
     ...folha,
     itens: visibleItems.map((item) => {
       const d = edits[item.id];
-      if (!d) return item;
+      const svcs = servicoEdits[item.id];
+      const st = statusEdits[item.id];
+      const tp = tipoEdits[item.id];
+      const mod = moduloEdits[item.id];
       return {
         ...item,
-        comprimento_m: d.c,
-        largura_m: d.l,
-        area_m2: parseFloat((d.c * d.l).toFixed(4)),
+        ...(d ? { comprimento_m: d.c, largura_m: d.l, area_m2: parseFloat((d.c * d.l).toFixed(4)) } : {}),
+        ...(svcs ? { servicos: svcs } : {}),
+        ...(st ? { status: st } : {}),
+        ...(tp ? { tipo: tp as ItemMedicao['tipo'] } : {}),
+        ...(mod ? { modulo: mod } : {}),
       };
     }),
   });
 
-  const handleApply = async () => {
-    setSaving(true);
-    onDone(buildUpdatedFolha());
-    setSaving(false);
-  };
+  useEffect(() => {
+    flushRef.current = () => onDone(buildUpdatedFolha());
+  });
 
-  // Default material from first item
   const defaultMaterial = folha.itens[0]?.material ?? 'Granito';
 
   return (
-    <div className="flex gap-5 w-full items-start">
+    <div className="flex gap-5 w-full items-start animate-fade-in">
       {zoomUrl && (
-        <ZoomModal url={zoomUrl} label={zoomLabel} onClose={() => setZoomUrl(null)} />
+        <ZoomModal
+          url={zoomUrl}
+          label={zoomLabel}
+          onClose={() => setZoomUrl(null)}
+          hasPrev={viewingImageIdx > 0}
+          hasNext={viewingImageIdx < imageUrls.length - 1}
+          onPrev={() => {
+            const idx = viewingImageIdx - 1;
+            setViewingImageIdx(idx);
+            setZoomUrl(imageUrls[idx]);
+            setZoomLabel(`Prancha ${idx + 1}`);
+          }}
+          onNext={() => {
+            const idx = viewingImageIdx + 1;
+            setViewingImageIdx(idx);
+            setZoomUrl(imageUrls[idx]);
+            setZoomLabel(`Prancha ${idx + 1}`);
+          }}
+        />
       )}
 
       {/* ── LEFT: items list ── */}
       <div className="flex-1 min-w-0 flex flex-col gap-5">
         {/* Header */}
         <div>
-          <h2 className="text-xl font-semibold text-gray-800">Passo 3 — Revisão</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{folha.projeto}</p>
-          <div className="mt-2 flex gap-3 flex-wrap text-xs">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-100">Revisão do Projeto</h2>
+              <p className="text-base text-zinc-300 mt-0.5">{folha.projeto}</p>
+            </div>
+          </div>
+          {/* Status summary */}
+          <div className="mt-3 flex gap-2 flex-wrap">
+            <span className="flex items-center gap-1.5 text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+              <span className="text-violet-400 font-bold text-sm">✓</span>
               {countByStatus.confirmado} confirmados
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+            <span className="flex items-center gap-1.5 text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+              <span className="text-violet-400 font-bold text-sm">−</span>
               {countByStatus.parcial} estimativas
             </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
+            <span className="flex items-center gap-1.5 text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+              <span className="text-violet-400 font-bold text-sm">✕</span>
               {countByStatus.aguardando} não identificados
             </span>
             {totalPendencias > 0 && (
-              <span className="text-amber-600">⚠ {totalPendencias} pendências</span>
+              <span className="flex items-center gap-1.5 text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+                 {totalPendencias} pendências
+              </span>
             )}
-            {removedIds.size > 0 && <span className="text-red-500">✕ {removedIds.size} removidos</span>}
-            {addedItems.length > 0 && <span className="text-blue-600">+ {addedItems.length} adicionados</span>}
+            {removedIds.size > 0 && (
+              <span className="text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-300">
+                ✕ {removedIds.size} removidos
+              </span>
+            )}
+            {addedItems.length > 0 && (
+              <span className="text-sm px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-400">
+                + {addedItems.length} adicionados
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Page groups */}
-        {grouped.pages.map(([pageIdx, items]) => {
-          const groupAmbiente = items[0]?.ambiente ?? 'Ambiente';
-          return (
-            <div key={pageIdx} className="border border-gray-200 rounded-xl overflow-hidden">
-              {/* Page header */}
-              <button
-                className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 hover:bg-gray-100 transition-colors text-left"
-                onClick={() => setViewingImageIdx(pageIdx < imageUrls.length ? pageIdx : viewingImageIdx)}
-              >
-                <div className={`w-2 h-8 rounded-full flex-shrink-0 ${pageIdx === viewingImageIdx ? 'bg-blue-500' : 'bg-gray-200'}`} />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-700">Prancha {pageIdx + 1}</p>
-                  <p className="text-xs text-gray-500">{items.length} {items.length === 1 ? 'item' : 'itens'}</p>
+        {/* Items grouped by ambiente */}
+        <div className="flex flex-col gap-4">
+          {grouped.map(([ambiente, items]) => {
+            const totalArea = items.reduce((s, i) => {
+              const d = edits[i.id];
+              const area = d ? parseFloat((d.c * d.l).toFixed(4)) : (i.area_m2 ?? 0);
+              return s + area;
+            }, 0);
+
+            return (
+              <div key={ambiente}>
+                {/* Ambiente header */}
+                <div className="flex items-center gap-3 px-1 pb-2 mb-1">
+                  <span className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">{ambiente}</span>
+                  <div className="flex-1 h-px bg-zinc-800" />
+                  <span className="text-sm text-zinc-400">{items.length} {items.length === 1 ? 'item' : 'itens'}</span>
+                  <span className="text-sm text-zinc-500 font-mono">{totalArea.toFixed(2)} m²</span>
                 </div>
-                {imageUrls[pageIdx] && (
-                  <span className="text-xs text-blue-500">
-                    {pageIdx === viewingImageIdx ? '← visível →' : 'Ver →'}
-                  </span>
-                )}
-              </button>
-
-              {/* Items */}
-              <div className="p-3 flex flex-col gap-2">
-                {items.map((item) => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    dimEdit={edits[item.id]}
-                    onEditDims={applyEdit}
-                    onRemove={removeItem}
-                  />
-                ))}
-                {showAddFormFor === groupAmbiente ? (
-                  <AddItemForm
-                    defaultAmbiente={groupAmbiente}
-                    defaultMaterial={defaultMaterial}
-                    onAdd={addItemToGroup}
-                    onCancel={() => setShowAddFormFor(null)}
-                  />
-                ) : (
-                  <button
-                    onClick={() => setShowAddFormFor(groupAmbiente)}
-                    className="w-full py-2 rounded-lg border-2 border-dashed border-gray-200 text-xs text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors"
-                  >
-                    + Adicionar item em {groupAmbiente}
-                  </button>
-                )}
+                {/* Items */}
+                <div className="flex flex-col gap-2">
+                  {items.map((item) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      dimEdit={edits[item.id]}
+                      servicoEdit={servicoEdits[item.id]}
+                      statusEdit={statusEdits[item.id]}
+                      tipoEdit={tipoEdits[item.id]}
+                      onEditDims={applyEdit}
+                      onEditServicos={applyServicos}
+                      onConfirm={confirmItem}
+                      onMarkPartial={markPartial}
+                      onEditTipo={applyTipo}
+                      onEditModulo={applyModulo}
+                      onRemove={removeItem}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        {/* Orphans */}
-        {grouped.orphans.length > 0 && (
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <p className="text-sm font-semibold text-gray-600">Itens sem prancha associada</p>
-            </div>
-            <div className="p-3 flex flex-col gap-2">
-              {grouped.orphans.map((item) => (
-                <ItemCard key={item.id} item={item} dimEdit={edits[item.id]} onEditDims={applyEdit} onRemove={removeItem} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 items-center justify-end pt-1 flex-wrap">
-          {hasChanges && (
-            <span className="text-xs text-blue-600 mr-auto">
-              {Object.keys(edits).length > 0 && `${Object.keys(edits).length} medida(s) editada(s)`}
-              {removedIds.size > 0 && ` · ${removedIds.size} removido(s)`}
-              {addedItems.length > 0 && ` · ${addedItems.length} adicionado(s)`}
-            </span>
-          )}
-          <button
-            onClick={() => onDone(buildUpdatedFolha())}
-            disabled={saving}
-            className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 active:scale-95 transition-all"
-          >
-            Ver Orçamento →
-          </button>
-          {hasChanges && (
+          {/* Add item */}
+          {showAddFormFor === 'global' ? (
+            <AddItemForm
+              defaultAmbiente=""
+              defaultMaterial={defaultMaterial}
+              ambientes={grouped.map(([env]) => env)}
+              onAdd={addItemToGroup}
+              onCancel={() => setShowAddFormFor(null)}
+            />
+          ) : (
             <button
-              onClick={handleApply}
-              disabled={saving}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 active:scale-95 transition-all"
+              onClick={() => setShowAddFormFor('global')}
+              className="w-full py-2.5 rounded border border-dashed border-zinc-700 text-sm text-zinc-400 hover:border-violet-500/40 hover:text-violet-400 transition-all flex items-center justify-center gap-1.5"
             >
-              {saving ? 'Salvando...' : 'Aplicar e recalcular →'}
+              + Adicionar item
             </button>
           )}
         </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 items-center justify-end pt-1">
+          <button
+            onClick={() => onDone(buildUpdatedFolha())}
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-500 text-white rounded text-base font-medium hover:bg-violet-400 active:scale-95 transition-all"
+          >
+            Ver Orçamento ?
+          </button>
+        </div>
       </div>
 
-      {/* ── RIGHT: sticky image panel (fixed 1000px, full height) ── */}
-      <div className="flex-shrink-0 sticky top-0 self-start" style={{ width: '1000px' }}>
-        <div className="rounded-xl overflow-hidden bg-gray-900 shadow-xl flex flex-col" style={{ height: 'calc(100vh - 32px)' }}>
-          {/* Image — fills everything */}
+      {/* ── RIGHT: sticky image panel ── */}
+      <div className="flex-shrink-0 sticky top-0 self-start" style={{ width: '1020px' }}>
+        <div className="rounded-sm overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl flex flex-col" style={{ height: 'calc(100vh - 32px)' }}>
+          {/* Image */}
           <div
-            className="relative bg-gray-950 flex items-center justify-center cursor-zoom-in flex-1 min-h-0"
+            className="relative bg-zinc-950 flex items-center justify-center cursor-zoom-in flex-1 min-h-0"
             onClick={() => {
-              if (currentViewUrl) {
-                setZoomUrl(currentViewUrl);
-                setZoomLabel(`Prancha ${viewingImageIdx + 1}`);
-              }
+              if (currentViewUrl) { setZoomUrl(currentViewUrl); setZoomLabel(`Prancha ${viewingImageIdx + 1}`); }
             }}
           >
             {currentViewUrl ? (
@@ -1220,66 +1628,66 @@ function StepReview({
                 style={{ display: 'block' }}
               />
             ) : (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <span className="text-5xl">🖼</span>
-                <p className="text-sm text-center px-8">
+              <div className="flex flex-col items-center gap-3 text-zinc-400">
+                
+                <p className="text-base text-center px-8">
                   {imageBlobs.length === 0
                     ? 'Re-faça o upload do PDF para ver as imagens'
                     : `Prancha ${viewingImageIdx + 1} sem imagem`}
                 </p>
               </div>
             )}
-            {/* Large arrow buttons overlaid on image sides */}
+            {/* Nav arrows */}
             <button
               onClick={(e) => { e.stopPropagation(); setViewingImageIdx((i) => Math.max(0, i - 1)); }}
               disabled={viewingImageIdx === 0}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-12 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm text-4xl font-thin select-none"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-16 flex items-center justify-center rounded bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm"
             >
-              ‹
+              ←
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setViewingImageIdx((i) => Math.min(imageUrls.length - 1, i + 1)); }}
               disabled={viewingImageIdx >= imageUrls.length - 1}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-12 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm text-4xl font-thin select-none"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-16 flex items-center justify-center rounded bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm"
             >
-              ›
+              →
             </button>
-            {/* Overlays */}
-            <div className="absolute bottom-3 left-3 flex gap-2">
-              <div className="flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                <span className="w-2 h-2 rounded-full bg-green-400" /> confirmado
-              </div>
-              <div className="flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                <span className="w-2 h-2 rounded-full bg-blue-400" /> estimativa
-              </div>
-              <div className="flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                <span className="w-2 h-2 rounded-full bg-red-400" /> não identificado
-              </div>
+            {/* Legends */}
+            <div className="absolute bottom-3 left-3 flex gap-1.5">
+              {[
+                { icon: '✓', label: 'confirmado' },
+                { icon: '−', label: 'estimativa' },
+                { icon: '✕', label: 'não id.' },
+              ].map(({ icon, label }) => (
+                <div key={label} className="flex items-center gap-1.5 bg-black/60 text-white text-sm px-2 py-1 rounded backdrop-blur-sm">
+                  <span className="text-violet-400 font-bold">{icon}</span> {label}
+                </div>
+              ))}
             </div>
             {currentViewUrl && (
-              <div className="absolute top-2 right-2 bg-black/40 text-white text-xs px-2 py-0.5 rounded-full pointer-events-none">
-                🔍 zoom
+              <div className="absolute top-2 right-2 bg-black/40 backdrop-blur-sm text-white text-sm px-2 py-0.5 rounded pointer-events-none flex items-center gap-1">
+                 zoom
               </div>
             )}
           </div>
 
-          {/* Navigation bar — thumbnails + counter */}
-          <div className="h-11 bg-gray-800 px-2 flex items-center gap-1">
-            <div className="flex-1 flex gap-1 overflow-x-auto py-1">
+          {/* Thumbnail strip */}
+          <div className="h-12 bg-zinc-900 border-t border-zinc-800 px-2 flex items-center gap-1">
+            <div className="flex-1 flex gap-1 overflow-x-auto py-1 dark-scroll">
               {imageUrls.map((url, i) => (
                 <button
                   key={i}
                   onClick={() => setViewingImageIdx(i)}
                   title={`Prancha ${i + 1}`}
-                  className={`flex-shrink-0 rounded overflow-hidden border-2 transition-all ${
-                    i === viewingImageIdx ? 'border-blue-400' : 'border-transparent opacity-40 hover:opacity-75'
+                  className={`flex-shrink-0 rounded-sm overflow-hidden border-2 transition-all ${
+                    i === viewingImageIdx ? 'border-violet-500' : 'border-transparent opacity-40 hover:opacity-70'
                   }`}
                 >
                   <img src={url} alt={`p${i + 1}`} className="h-7 w-10 object-cover" />
                 </button>
               ))}
             </div>
-            <span className="text-gray-500 text-xs ml-2 flex-shrink-0">
+            <span className="text-zinc-400 text-sm ml-2 flex-shrink-0 tabular-nums">
               {viewingImageIdx + 1}/{imageUrls.length}
             </span>
           </div>
@@ -1296,54 +1704,50 @@ const PRICE_OUTPUT = 15 / 1_000_000;
 
 function TokenLogPanel({ logs }: { logs: TokenLog[] }) {
   const [open, setOpen] = useState(false);
-
   const totalInput = logs.reduce((s, l) => s + l.usage.input_tokens, 0);
   const totalOutput = logs.reduce((s, l) => s + l.usage.output_tokens, 0);
   const totalCost = totalInput * PRICE_INPUT + totalOutput * PRICE_OUTPUT;
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden text-sm">
+    <div className="border border-zinc-800 rounded overflow-hidden text-base">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors text-left"
       >
-        <span className="font-medium text-gray-700">
-          Uso de tokens — {(totalInput + totalOutput).toLocaleString('pt-BR')} total
+        <span className="font-medium text-zinc-400">
+          Tokens — {(totalInput + totalOutput).toLocaleString('pt-BR')} total
         </span>
-        <span className="text-xs text-gray-500 flex items-center gap-3">
+        <span className="text-sm text-zinc-400 flex items-center gap-3">
           <span>≈ ${totalCost.toFixed(4)} USD</span>
           <span>{open ? '▲' : '▼'}</span>
         </span>
       </button>
-
       {open && (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-zinc-800">
           {logs.map((log, idx) => {
             const cost = log.usage.input_tokens * PRICE_INPUT + log.usage.output_tokens * PRICE_OUTPUT;
             return (
-              <div key={idx} className="px-4 py-3 flex flex-col gap-1">
+              <div key={idx} className="px-4 py-3 flex flex-col gap-1 bg-zinc-950">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-gray-700">{log.stage}</span>
-                  <span className="text-xs text-gray-400">${cost.toFixed(4)}</span>
+                  <span className="font-medium text-zinc-300">{log.stage}</span>
+                  <span className="text-sm text-zinc-400">${cost.toFixed(4)}</span>
                 </div>
-                <div className="flex gap-4 text-xs text-gray-500">
+                <div className="flex gap-4 text-sm text-zinc-300">
                   <span>Input: {log.usage.input_tokens.toLocaleString('pt-BR')} tk</span>
                   <span>Output: {log.usage.output_tokens.toLocaleString('pt-BR')} tk</span>
                   {(log.usage.cache_read_input_tokens ?? 0) > 0 && (
-                    <span className="text-green-600">
-                      Cache hit: {log.usage.cache_read_input_tokens!.toLocaleString('pt-BR')} tk
-                    </span>
+                    <span className="text-green-400">Cache: {log.usage.cache_read_input_tokens!.toLocaleString('pt-BR')} tk</span>
                   )}
                 </div>
               </div>
             );
           })}
-          <div className="px-4 py-3 bg-gray-50 flex justify-between font-medium text-gray-700">
+          <div className="px-4 py-3 bg-zinc-900 flex justify-between font-medium text-zinc-400 text-sm">
             <span>Total</span>
-            <div className="flex gap-4 text-xs text-gray-600">
-              <span>Input: {totalInput.toLocaleString('pt-BR')} tk</span>
-              <span>Output: {totalOutput.toLocaleString('pt-BR')} tk</span>
-              <span className="font-semibold">${totalCost.toFixed(4)} USD</span>
+            <div className="flex gap-4">
+              <span>In: {totalInput.toLocaleString('pt-BR')} tk</span>
+              <span>Out: {totalOutput.toLocaleString('pt-BR')} tk</span>
+              <span className="font-semibold text-zinc-300">${totalCost.toFixed(4)} USD</span>
             </div>
           </div>
         </div>
@@ -1353,17 +1757,38 @@ function TokenLogPanel({ logs }: { logs: TokenLog[] }) {
 }
 
 function StepOrcamento({
-  folha,
-  resultado,
-  tokenLogs,
-  onRestart,
+  folha, resultado, tokenLogs, onRestart, onGoToReview,
 }: {
   folha: FolhaMedicao;
   resultado: ResultadoOrcamento;
   tokenLogs: TokenLog[];
   onRestart: () => void;
+  onGoToReview: (itemId: number) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [expandedAmbiente, setExpandedAmbiente] = useState<string | null>(null);
+
+  const totalItems = folha.itens.length;
+  const confirmados = folha.itens.filter((i) => i.status === 'confirmado').length;
+  const estimativas = folha.itens.filter((i) => i.status === 'parcial').length;
+  const naoIdentificados = folha.itens.filter((i) => i.status === 'aguardando').length;
+  const totalPendencias = folha.itens.reduce((s, i) => s + (i.pendencias?.length ?? 0), 0);
+  const totalArea = folha.itens.reduce((s, i) => s + (i.area_m2 ?? 0), 0);
+  const confidenceScore = totalItems > 0 ? Math.round((confirmados / totalItems) * 100) : 0;
+
+  const confidenceColor = confidenceScore >= 80 ? 'text-zinc-200' : confidenceScore >= 50 ? 'text-zinc-300' : 'text-zinc-400';
+  const confidenceBg = 'bg-zinc-800 border-zinc-700';
+
+  // Group resultado.itens by ambiente
+  const itemsByAmbiente = useMemo(() => {
+    const map = new Map<string, typeof resultado.itens>();
+    for (const item of resultado.itens) {
+      const env = item.ambiente || 'Outros';
+      if (!map.has(env)) map.set(env, []);
+      map.get(env)!.push(item);
+    }
+    return [...map.entries()];
+  }, [resultado.itens]);
 
   const pendenciasAbertas = folha.itens.flatMap((item) =>
     (item.pendencias ?? []).map((p) => ({ id: item.id, modulo: item.modulo, tipo: item.tipo, texto: p }))
@@ -1390,74 +1815,155 @@ function StepOrcamento({
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full">
-      <h2 className="text-xl font-semibold text-gray-800">
-        Passo 4 — Orçamento — {folha.projeto}
-      </h2>
+    <div className="flex flex-col gap-6 w-full animate-fade-in">
 
-      {/* Total card */}
-      <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-        <p className="text-sm text-blue-200 mb-1">Total Geral Estimado</p>
-        <p className="text-4xl font-bold">{fmtBRL(resultado.totalGeral)}</p>
-        <div className="mt-4 flex gap-6 text-sm text-blue-100">
-          <span>Material: {fmtBRL(resultado.totalMaterial)}</span>
-          <span>Serviços: {fmtBRL(resultado.totalServicos)}</span>
+      {/* ── Hero ── */}
+      <div className="rounded-sm bg-zinc-900 border border-zinc-800 p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-zinc-400 uppercase tracking-wider mb-2 font-medium">Estimativa total</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-base font-medium text-zinc-300">R$</span>
+              <span className="text-6xl font-bold text-zinc-50 tracking-tight tabular-nums">
+                {resultado.totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="mt-3 flex gap-4 text-base text-zinc-300">
+              <span>Material: <span className="text-zinc-300 font-medium">{fmtBRL(resultado.totalMaterial)}</span></span>
+              <span>Serviços: <span className="text-zinc-300 font-medium">{fmtBRL(resultado.totalServicos)}</span></span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Por ambiente */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Por Ambiente</h3>
+      {/* ── Resumo da IA ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          
+          <h3 className="text-base font-semibold text-zinc-300">Resumo</h3>
         </div>
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
-            {Object.entries(resultado.porAmbiente).map(([amb, v]) => (
-              <tr key={amb} className="hover:bg-gray-50">
-                <td className="px-4 py-2.5 text-gray-700">{amb}</td>
-                <td className="px-4 py-2.5 text-right font-medium text-gray-800">{fmtBRL(v)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Peças identificadas', value: totalItems },
+            { label: 'Área total', value: `${totalArea.toFixed(1)} m²` },
+            { label: 'Estimativas', value: estimativas },
+            { label: 'Pendências', value: totalPendencias },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded border p-4 bg-zinc-800 border-zinc-700 animate-fade-in">
+              <p className="text-2xl font-bold text-zinc-100 tabular-nums">{value}</p>
+              <p className="text-sm text-zinc-300 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Por material */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Por Material</h3>
+      {/* ── Itens por ambiente ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          
+          <h3 className="text-base font-semibold text-zinc-300">Itens por ambiente</h3>
         </div>
-        <table className="w-full text-sm">
-          <thead className="text-xs text-gray-500 uppercase">
+        <div className="flex flex-col gap-2">
+          {itemsByAmbiente.map(([ambiente, items]) => {
+            const totalAmbiente = items.reduce((s, i) => s + i.vlrTotal, 0);
+            const isOpen = expandedAmbiente === ambiente;
+            return (
+              <div key={ambiente} className="rounded border border-zinc-800 overflow-hidden">
+                <button
+                  onClick={() => setExpandedAmbiente(isOpen ? null : ambiente)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-base font-semibold text-zinc-200">{ambiente}</span>
+                    <span className="text-sm text-zinc-400">{items.length} {items.length === 1 ? 'item' : 'itens'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-base font-semibold text-zinc-200 tabular-nums">{fmtBRL(totalAmbiente)}</span>
+                    <span className={`text-sm text-zinc-400 transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>→</span>
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="bg-zinc-950 border-t border-zinc-800">
+                    <table className="w-full text-base">
+                      <thead>
+                        <tr className="border-b border-zinc-800">
+                          <th className="px-4 py-2 text-left text-sm font-medium text-zinc-400 uppercase tracking-wide">Item</th>
+                          <th className="px-4 py-2 text-left text-sm font-medium text-zinc-400 uppercase tracking-wide">Material</th>
+                          <th className="px-4 py-2 text-right text-sm font-medium text-zinc-400 uppercase tracking-wide">Área</th>
+                          <th className="px-4 py-2 text-right text-sm font-medium text-zinc-400 uppercase tracking-wide">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800/50">
+                        {items.map((item) => (
+                          <tr key={item.id} className="hover:bg-zinc-900/60">
+                            <td className="px-4 py-2.5">
+                              <p className="text-zinc-200 font-medium">{item.modulo}</p>
+                              <p className="text-sm text-zinc-400">{item.tipo}</p>
+                            </td>
+                            <td className="px-4 py-2.5 text-zinc-400">{item.material}</td>
+                            <td className="px-4 py-2.5 text-right text-zinc-400 font-mono tabular-nums">
+                              {(item.area_m2 ?? 0).toFixed(2)} m²
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-zinc-200 tabular-nums">
+                              {fmtBRL(item.vlrTotal)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Por material ── */}
+      <div className="rounded border border-zinc-800 overflow-hidden">
+        <div className="px-4 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-2">
+          
+          <h3 className="text-base font-semibold text-zinc-400">Por Material</h3>
+        </div>
+        <table className="w-full text-base bg-zinc-950">
+          <thead className="border-b border-zinc-800">
             <tr>
-              <th className="px-4 py-2 text-left">Material</th>
-              <th className="px-4 py-2 text-right">Área m²</th>
-              <th className="px-4 py-2 text-right">Valor</th>
+              <th className="px-4 py-2 text-left text-sm font-medium text-zinc-400 uppercase tracking-wide">Material</th>
+              <th className="px-4 py-2 text-right text-sm font-medium text-zinc-400 uppercase tracking-wide">Área m²</th>
+              <th className="px-4 py-2 text-right text-sm font-medium text-zinc-400 uppercase tracking-wide">Valor</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-zinc-800/50">
             {Object.entries(resultado.porMaterial).map(([mat, v]) => (
-              <tr key={mat} className="hover:bg-gray-50">
-                <td className="px-4 py-2.5 text-gray-700">{mat}</td>
-                <td className="px-4 py-2.5 text-right text-gray-600">{v.area.toFixed(2)}</td>
-                <td className="px-4 py-2.5 text-right font-medium text-gray-800">{fmtBRL(v.valor)}</td>
+              <tr key={mat} className="hover:bg-zinc-900/60">
+                <td className="px-4 py-2.5 text-zinc-300">{mat}</td>
+                <td className="px-4 py-2.5 text-right text-zinc-300 font-mono tabular-nums">{v.area.toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-zinc-200 tabular-nums">{fmtBRL(v.valor)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Pendências */}
+      {/* ── Pendências ── */}
       {pendenciasAbertas.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-amber-800 mb-3">
-            Pendências em Aberto ({pendenciasAbertas.length})
+        <div className="rounded bg-zinc-900 border border-zinc-800 p-4">
+          <h3 className="text-base font-semibold text-zinc-400 mb-3 flex items-center gap-1.5">
+             Pendências em Aberto ({pendenciasAbertas.length})
           </h3>
-          <ul className="flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-2">
             {pendenciasAbertas.map((p, idx) => (
-              <li key={idx} className="text-xs text-amber-700 flex gap-2">
-                <span className="font-medium shrink-0">[{p.id}] {p.modulo}:</span>
-                <span>{p.texto}</span>
+              <li key={idx} className="flex items-start justify-between gap-3 group">
+                <div className="flex gap-2 text-sm text-zinc-300 min-w-0">
+                  <span className="font-medium shrink-0 text-zinc-400">{p.modulo}:</span>
+                  <span className="truncate">{p.texto}</span>
+                </div>
+                <button
+                  onClick={() => onGoToReview(p.id)}
+                  className="flex-shrink-0 text-sm px-2.5 py-1 rounded border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-200 transition-all"
+                >
+                  Corrigir →
+                </button>
               </li>
             ))}
           </ul>
@@ -1466,38 +1972,79 @@ function StepOrcamento({
 
       {IS_DEV && <TokenLogPanel logs={tokenLogs} />}
 
-      <div className="flex gap-3 self-end">
-        <button
-          onClick={onRestart}
-          className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 active:scale-95 transition-all"
-        >
-          Novo Projeto
+      {/* ── Actions ── */}
+      <div className="flex gap-3 self-end pt-1">
+        <button onClick={onRestart}
+          className="flex items-center gap-2 px-4 py-2.5 border border-zinc-700 text-zinc-400 rounded text-base hover:bg-zinc-800 hover:text-zinc-200 active:scale-95 transition-all">
+           Novo Projeto
         </button>
-        <button
-          onClick={copyResumo}
-          className="px-5 py-2.5 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-900 active:scale-95 transition-all"
-        >
-          {copied ? '✓ Copiado!' : 'Copiar Resumo'}
+        <button onClick={copyResumo}
+          className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 border border-zinc-700 text-zinc-200 rounded text-base hover:bg-zinc-700 active:scale-95 transition-all">
+          
+          {copied ? 'Copiado!' : 'Copiar Resumo'}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Wizard Stepper ───────────────────────────────────────────────────────────
+// ─── Stepper (hidden on step 1) ───────────────────────────────────────────────
 
 function Stepper({
-  current,
-  accessible,
-  onNavigate,
+  current, accessible, onNavigate, onReset,
 }: {
   current: Step;
   accessible: Set<Step>;
   onNavigate: (s: Step) => void;
+  onReset: () => void;
 }) {
-  const steps = ['Upload', 'Pipeline', 'Revisão', 'Orçamento'];
+  if (current === 1) return null;
+
+  // Steps 3 & 4: compact bar with only Revisão/Orçamento + Novo Projeto button
+  if (current >= 3) {
+    const lateSteps: { num: Step; label: string }[] = [
+      { num: 3, label: 'Revisão' },
+      { num: 4, label: 'Orçamento' },
+    ];
+    return (
+      <div className="flex items-center justify-center gap-0 w-full max-w-sm mx-auto mb-8">
+        {lateSteps.map(({ num, label }, idx) => {
+          const done = current > num;
+          const active = current === num;
+          const clickable = (accessible?.has(num) ?? false) && num !== current;
+          return (
+            <div key={num} className="flex items-center flex-1">
+              <button
+                onClick={() => clickable && onNavigate(num)}
+                disabled={!clickable}
+                className={`flex flex-col items-center flex-shrink-0 transition-all ${clickable ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+              >
+                <span className={`text-sm font-medium ${
+                  active ? 'text-violet-400' : done ? 'text-violet-500' : 'text-zinc-400'
+                }`}>{label}</span>
+              </button>
+              {idx < lateSteps.length - 1 && (
+                <div className={`h-px flex-1 mx-2 transition-colors ${done ? 'bg-violet-900/40' : 'bg-zinc-800'}`} />
+              )}
+            </div>
+          );
+        })}
+        <div className="ml-6 flex-shrink-0">
+          <button
+            onClick={onReset}
+            className="px-3 py-1.5 text-sm border border-zinc-700 text-zinc-400 rounded hover:border-zinc-500 hover:text-zinc-200 transition-all"
+          >
+            Novo Projeto
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const steps = ['Upload', 'Análise IA', 'Revisão', 'Orçamento'];
+
   return (
-    <div className="flex items-center gap-0 w-full max-w-xl mx-auto mb-8">
+    <div className="flex items-center gap-0 w-full max-w-lg mx-auto mb-8">
       {steps.map((label, idx) => {
         const num = (idx + 1) as Step;
         const done = current > num;
@@ -1505,24 +2052,22 @@ function Stepper({
         const clickable = (accessible?.has(num) ?? false) && num !== current;
         return (
           <div key={num} className="flex items-center flex-1">
-            <div className="flex flex-col items-center flex-shrink-0">
-              <button
-                onClick={() => clickable && onNavigate(num)}
-                disabled={!clickable}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                  done ? 'bg-green-500 text-white' :
-                  active ? 'bg-blue-600 text-white' :
-                  'bg-gray-200 text-gray-500'
-                } ${clickable ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-              >
-                {done ? '✓' : num}
-              </button>
-              <span className={`text-xs mt-1 ${active ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+            <button
+              onClick={() => clickable && onNavigate(num)}
+              disabled={!clickable}
+              className={`flex flex-col items-center flex-shrink-0 transition-all ${clickable ? 'cursor-pointer hover:opacity-75' : 'cursor-default'}`}
+            >
+              <span className={`text-xl font-bold ${
+                done ? 'text-violet-500' : active ? 'text-violet-400' : 'text-zinc-400'
+              }`}>{num}</span>
+              <span className={`text-sm mt-1 font-medium ${
+                active ? 'text-violet-400' : done ? 'text-violet-500' : 'text-zinc-400'
+              }`}>
                 {label}
               </span>
-            </div>
+            </button>
             {idx < steps.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-2 mb-4 ${done ? 'bg-green-400' : 'bg-gray-200'}`} />
+              <div className={`h-px flex-1 mx-2 mb-5 transition-colors ${done ? 'bg-violet-900/40' : 'bg-zinc-800'}`} />
             )}
           </div>
         );
@@ -1531,7 +2076,7 @@ function Stepper({
   );
 }
 
-// ─── IndexedDB — image blob persistence ──────────────────────────────────────
+// ─── IndexedDB ────────────────────────────────────────────────────────────────
 
 const IDB_NAME  = 'orcamento_idb_v1';
 const IDB_STORE = 'blobs';
@@ -1584,7 +2129,7 @@ async function clearIDBBlobs(): Promise<void> {
   } catch { /* ignore */ }
 }
 
-// ─── localStorage persistence ─────────────────────────────────────────────────
+// ─── localStorage ─────────────────────────────────────────────────────────────
 
 const LS_KEY      = 'orcamento_pipeline_v1';
 const HISTORY_KEY = 'orcamento_history_v1';
@@ -1615,10 +2160,8 @@ export interface HistoryEntry {
 
 function loadPersisted(): PersistedState | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? (JSON.parse(raw) as PersistedState) : null;
-  } catch { return null; }
+  try { const raw = localStorage.getItem(LS_KEY); return raw ? (JSON.parse(raw) as PersistedState) : null; }
+  catch { return null; }
 }
 function savePersisted(s: PersistedState) {
   try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch { /* quota */ }
@@ -1626,39 +2169,23 @@ function savePersisted(s: PersistedState) {
 function clearPersisted() {
   try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
 }
-
 function loadHistory(): HistoryEntry[] {
   if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? (JSON.parse(raw) as HistoryEntry[]) : [];
-  } catch { return []; }
+  try { const raw = localStorage.getItem(HISTORY_KEY); return raw ? (JSON.parse(raw) as HistoryEntry[]) : []; }
+  catch { return []; }
 }
-
 function saveToHistory(
-  folha: FolhaMedicao,
-  resultado: ResultadoOrcamento,
-  stage1Output: string | null,
-  stage2Output: string | null,
-  tokenLogs: TokenLog[]
+  folha: FolhaMedicao, resultado: ResultadoOrcamento,
+  stage1Output: string | null, stage2Output: string | null, tokenLogs: TokenLog[]
 ) {
   try {
     const history = loadHistory();
     const totalPendencias = folha.itens.reduce((s, i) => s + (i.pendencias?.length ?? 0), 0);
     const existing = history.findIndex((e) => e.projeto === folha.projeto);
     const entry: HistoryEntry = {
-      id: existing >= 0
-        ? history[existing].id
-        : `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      savedAt: Date.now(),
-      projeto: folha.projeto,
-      totalGeral: resultado.totalGeral,
-      totalPendencias,
-      stage1Output,
-      stage2Output,
-      folha,
-      resultado,
-      tokenLogs,
+      id: existing >= 0 ? history[existing].id : `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      savedAt: Date.now(), projeto: folha.projeto, totalGeral: resultado.totalGeral, totalPendencias,
+      stage1Output, stage2Output, folha, resultado, tokenLogs,
     };
     const updated = existing >= 0
       ? history.map((e, i) => (i === existing ? entry : e))
@@ -1666,7 +2193,6 @@ function saveToHistory(
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
   } catch { /* quota */ }
 }
-
 function deleteFromHistory(id: string) {
   try {
     const updated = loadHistory().filter((e) => e.id !== id);
@@ -1677,10 +2203,7 @@ function deleteFromHistory(id: string) {
 // ─── History Panel ─────────────────────────────────────────────────────────────
 
 function HistoryPanel({
-  history,
-  onLoad,
-  onDelete,
-  onClose,
+  history, onLoad, onDelete, onClose,
 }: {
   history: HistoryEntry[];
   onLoad: (entry: HistoryEntry) => void;
@@ -1689,9 +2212,9 @@ function HistoryPanel({
 }) {
   if (history.length === 0) {
     return (
-      <div className="mb-6 bg-white border border-gray-200 rounded-xl p-6 text-center">
-        <p className="text-sm text-gray-500">Nenhum orçamento salvo ainda.</p>
-        <button onClick={onClose} className="mt-3 text-xs text-gray-400 hover:text-gray-600 underline">
+      <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-sm p-6 text-center">
+        <p className="text-base text-zinc-300">Nenhum orçamento salvo ainda.</p>
+        <button onClick={onClose} className="mt-3 text-sm text-zinc-400 hover:text-zinc-400 underline transition-colors">
           Fechar
         </button>
       </div>
@@ -1699,41 +2222,48 @@ function HistoryPanel({
   }
 
   return (
-    <div className="mb-6 bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-700">Histórico — {history.length} orçamentos</h3>
-        <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">✕ Fechar</button>
+    <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-sm overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3.5 bg-zinc-900 border-b border-zinc-800">
+        <h3 className="text-base font-semibold text-zinc-300 flex items-center gap-2">
+          
+          Histórico — {history.length} orçamentos
+        </h3>
+        <button onClick={onClose} className="text-zinc-400 hover:text-zinc-400 transition-colors">
+          ✕
+        </button>
       </div>
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-zinc-800">
         {history.map((entry) => (
-          <div key={entry.id} className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50">
+          <div key={entry.id} className="flex items-start gap-4 px-5 py-4 hover:bg-zinc-800/50 transition-colors">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-800 truncate">{entry.projeto}</p>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-base font-semibold text-zinc-200 truncate">{entry.projeto}</p>
+              <p className="text-sm text-zinc-400 mt-0.5">
                 {new Date(entry.savedAt).toLocaleString('pt-BR')}
               </p>
-              <div className="mt-1.5 flex gap-3 flex-wrap text-xs">
-                <span className="font-medium text-gray-700">
+              <div className="mt-1.5 flex gap-3 flex-wrap text-sm">
+                <span className="font-semibold text-zinc-300">
                   {entry.totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </span>
                 {entry.totalPendencias > 0 && (
-                  <span className="text-amber-600">⚠ {entry.totalPendencias} pendências</span>
+                  <span className="text-amber-400 flex items-center gap-1">
+                     {entry.totalPendencias} pendências
+                  </span>
                 )}
-                <span className="text-gray-400">{entry.folha.itens.length} itens</span>
+                <span className="text-zinc-400">{entry.folha.itens.length} itens</span>
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
               <button
                 onClick={() => onLoad(entry)}
-                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all"
+                className="text-sm px-3 py-1.5 bg-violet-500 text-white rounded-sm hover:bg-violet-400 active:scale-95 transition-all"
               >
                 Carregar
               </button>
               <button
                 onClick={() => onDelete(entry.id)}
-                className="text-xs px-2.5 py-1.5 border border-gray-300 text-gray-500 rounded-md hover:bg-gray-100 hover:text-red-600 active:scale-95 transition-all"
+                className="text-sm px-2.5 py-1.5 border border-zinc-700 text-zinc-300 rounded-sm hover:bg-zinc-800 hover:text-red-400 active:scale-95 transition-all"
               >
-                ✕
+                ?
               </button>
             </div>
           </div>
@@ -1747,8 +2277,11 @@ function HistoryPanel({
 
 export default function OrcamentoPage() {
   const [step, setStep] = useState<Step>(1);
+  const reviewFlushRef = useRef<() => void>(() => {});
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [imageBlobs, setImageBlobs] = useState<Blob[]>([]);
   const [pageTexts, setPageTexts] = useState<string[]>([]);
+  const [converting, setConverting] = useState(false);
   const [stage1Output, setStage1Output] = useState<string | null>(null);
   const [stage2Output, setStage2Output] = useState<string | null>(null);
   const [folha, setFolha] = useState<FolhaMedicao | null>(null);
@@ -1758,7 +2291,6 @@ export default function OrcamentoPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Load session + history + image blobs on mount
   useEffect(() => {
     const saved = loadPersisted();
     if (saved) {
@@ -1771,18 +2303,13 @@ export default function OrcamentoPage() {
       setRestoredAt(saved.savedAt);
     }
     setHistory(loadHistory());
-    // Restore image blobs from IndexedDB (async)
-    loadIDBBlobs().then((blobs) => {
-      if (blobs.length > 0) setImageBlobs(blobs);
-    });
+    loadIDBBlobs().then((blobs) => { if (blobs.length > 0) setImageBlobs(blobs); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist image blobs to IndexedDB whenever they change
   useEffect(() => {
     if (imageBlobs.length > 0) saveIDBBlobs(imageBlobs);
   }, [imageBlobs]);
 
-  // Persist session + history whenever state changes
   useEffect(() => {
     if (!stage1Output && !stage2Output && !folha && !resultado) return;
     savePersisted({ stage1Output, stage2Output, folha, resultado, tokenLogs, pageTexts, savedAt: Date.now() });
@@ -1800,9 +2327,7 @@ export default function OrcamentoPage() {
     if (u.tokenLog) {
       setTokenLogs((prev) => {
         const idx = prev.findIndex((l) => l.stage === u.tokenLog!.stage);
-        return idx >= 0
-          ? prev.map((l, i) => (i === idx ? u.tokenLog! : l))
-          : [...prev, u.tokenLog!];
+        return idx >= 0 ? prev.map((l, i) => (i === idx ? u.tokenLog! : l)) : [...prev, u.tokenLog!];
       });
     }
   }, []);
@@ -1827,15 +2352,10 @@ export default function OrcamentoPage() {
   const reset = () => {
     clearPersisted();
     clearIDBBlobs();
-    setStep(1);
-    setImageBlobs([]);
-    setPageTexts([]);
-    setStage1Output(null);
-    setStage2Output(null);
-    setFolha(null);
-    setResultado(null);
-    setTokenLogs([]);
-    setRestoredAt(null);
+    setStep(1); setImageBlobs([]); setPageTexts([]);
+    setStage1Output(null); setStage2Output(null);
+    setFolha(null); setResultado(null);
+    setTokenLogs([]); setRestoredAt(null);
   };
 
   const accessible = new Set<Step>([1]);
@@ -1844,36 +2364,76 @@ export default function OrcamentoPage() {
   if (resultado) accessible.add(4);
 
   return (
-    <div className="h-screen overflow-y-auto bg-gray-50 py-12 px-4">
-      <div className={`mx-auto transition-all ${step === 3 ? 'w-full px-4' : 'max-w-3xl'}`}>
-        {/* Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Orçamento de Marmoraria</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Análise automática por IA a partir do projeto arquitetônico
-            </p>
-          </div>
-          <button
-            onClick={() => setShowHistory((o) => !o)}
-            className={`flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border font-medium transition-all flex-shrink-0 ${
-              showHistory
-                ? 'bg-gray-800 text-white border-gray-800'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            📋 Histórico
-            {history.length > 0 && (
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                showHistory ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {history.length}
-              </span>
-            )}
-          </button>
-        </div>
+    <div ref={scrollContainerRef} className="h-screen overflow-y-auto bg-black py-10 px-4 dark-scroll">
+      <div className={`mx-auto transition-all duration-300 ${step === 3 ? 'w-full max-w-[1800px] px-4' : 'max-w-2xl'}`}>
 
-        {/* History panel */}
+        {/* Top bar — history button always visible (except step 1 hero) */}
+        {step === 1 && (
+          <div className="mb-2 flex justify-end animate-fade-in">
+            <button
+              onClick={() => setShowHistory((o) => !o)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-sm border bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-300 transition-all"
+            >
+              Histórico
+              {history.length > 0 && (
+                <span className="text-sm px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{history.length}</span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {restoredAt && step !== 1 && !showHistory && (
+          <div className="mb-4 flex items-center justify-between gap-3 text-sm bg-violet-500/10 border border-violet-500/20 rounded px-4 py-2.5 animate-fade-in">
+            <span className="text-violet-400">
+              Sessão restaurada — {new Date(restoredAt).toLocaleString('pt-BR')}
+            </span>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <button onClick={reset} className="text-violet-400/70 hover:text-violet-300 underline transition-colors">
+                Limpar sessão
+              </button>
+              <button
+                onClick={() => setShowHistory((o) => !o)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-sm border font-medium transition-all ${
+                  showHistory
+                    ? 'bg-zinc-700 text-zinc-100 border-zinc-600'
+                    : 'bg-zinc-900/60 text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-200'
+                }`}
+              >
+                Histórico
+                {history.length > 0 && (
+                  <span className={`text-sm px-1.5 py-0.5 rounded ${
+                    showHistory ? 'bg-zinc-600 text-zinc-200' : 'bg-zinc-800 text-zinc-300'
+                  }`}>
+                    {history.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!restoredAt && step !== 1 && (
+          <div className="mb-4 flex justify-end animate-fade-in">
+            <button
+              onClick={() => setShowHistory((o) => !o)}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-sm border font-medium transition-all ${
+                showHistory
+                  ? 'bg-zinc-700 text-zinc-100 border-zinc-600'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200'
+              }`}
+            >
+              Histórico
+              {history.length > 0 && (
+                <span className={`text-sm px-1.5 py-0.5 rounded ${
+                  showHistory ? 'bg-zinc-600 text-zinc-200' : 'bg-zinc-800 text-zinc-300'
+                }`}>
+                  {history.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
         {showHistory && (
           <HistoryPanel
             history={history}
@@ -1883,26 +2443,25 @@ export default function OrcamentoPage() {
           />
         )}
 
-        {restoredAt && !showHistory && (
-          <div className="mb-4 flex items-center justify-between gap-3 text-xs bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
-            <span className="text-blue-700">
-              💾 Restaurado — {new Date(restoredAt).toLocaleString('pt-BR')}
-            </span>
-            <button onClick={reset} className="text-blue-500 hover:text-blue-700 underline flex-shrink-0">
-              Limpar sessão
-            </button>
-          </div>
-        )}
+        <Stepper
+          current={step}
+          accessible={accessible}
+          onNavigate={(s) => {
+            if (s === 4 && step === 3) { reviewFlushRef.current(); }
+            else setStep(s);
+          }}
+          onReset={reset}
+        />
 
-        <Stepper current={step} accessible={accessible} onNavigate={setStep} />
-
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        {/* Step content */}
+        <div className={step === 1 || step === 2 ? '' : 'bg-zinc-900 rounded-sm border border-zinc-800 p-8 shadow-2xl'}>
           {step === 1 && (
             <StepUpload
+              onConversionStart={() => { setConverting(true); setStep(2); }}
               onDone={(blobs, texts) => {
                 setImageBlobs(blobs);
                 setPageTexts(texts);
-                setStep(2);
+                setConverting(false);
               }}
             />
           )}
@@ -1918,6 +2477,7 @@ export default function OrcamentoPage() {
               tokenLogs={tokenLogs}
               onUpdate={handleUpdate}
               onNavigate={setStep}
+              converting={converting}
             />
           )}
 
@@ -1925,6 +2485,7 @@ export default function OrcamentoPage() {
             <StepReview
               folha={folha}
               imageBlobs={imageBlobs}
+              flushRef={reviewFlushRef}
               onDone={async (updated) => {
                 if (updated !== folha) {
                   handleUpdate({ folha: updated });
@@ -1936,6 +2497,7 @@ export default function OrcamentoPage() {
                   if (r.ok) handleUpdate({ resultado: await r.json() as ResultadoOrcamento });
                 }
                 setStep(4);
+                scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
               }}
             />
           )}
@@ -1946,6 +2508,12 @@ export default function OrcamentoPage() {
               resultado={resultado}
               tokenLogs={tokenLogs}
               onRestart={reset}
+              onGoToReview={(itemId) => {
+                setStep(3);
+                setTimeout(() => {
+                  document.getElementById(`item-${itemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 150);
+              }}
             />
           )}
         </div>
@@ -1953,3 +2521,8 @@ export default function OrcamentoPage() {
     </div>
   );
 }
+
+
+
+
+

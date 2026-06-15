@@ -1,4 +1,4 @@
-﻿export const STAGE1_PROMPT = `
+export const STAGE1_PROMPT = `
 # STAGE 1 — SCANNER DE PEÇAS
 ## Função única: identificar e descrever. NÃO calcular nada.
 
@@ -97,7 +97,10 @@ Varra o projeto prancha por prancha, na ordem. Para cada prancha:
 | "Torre de tomadas" integrada ao módulo com tampo de pedra | Indica furo para torre de tomada no granito |
 | Módulo da lavanderia com granito no legend de materiais | Verificar tampo E rodapé de todos os módulos da lavanderia |
 | Material de pedra presente na legenda da prancha sem callout explícito | Criar ITEM com alerta de confirmação — nunca descartar |
-| Detalhe de granito (vista SUPERIOR GRANITO ou CORTE GRANITO) mostra rebaixo | Confirmar Rebaixo Italiano |
+| Detalhe de granito (vista SUPERIOR GRANITO ou CORTE GRANITO) mostra rebaixo | Confirmar tipo: Rebaixo Italiano, Convencional ou Romano |
+| Cuba visivel tem a mesma cor/material que o tampo (nao contrasta) | Possivel **cuba esculpida** — mais material + mao de obra especial. Marcar 🔴 ATENCAO. |
+| Bancada **sem movel embaixo** (tampo flutuando, pes aparentes, sem base de armarios visivel) | Indica instalacao sobre **mao francesa**, nao sobre base. Marcar 🔴 ATENCAO. |
+| Cuba ou pia com **mais de um ponto hidraulico** visivel ou projeto indica registros multiplos | Furo torneira quantidade > 1. Registrar quantidade estimada no ITEM. |
 
 ---
 
@@ -277,13 +280,18 @@ Para cada item recebido do Scanner, percorra as perguntas abaixo e responda SIM 
 | # | Pergunta | Se SIM → ação |
 |---|---|---|
 | C1 | O módulo tem **torre de tomadas** visível integrada ao tampo? | Adicionar "Furo para torre de tomada" como serviço deste item. |
-| C2 | O detalhe de granito ou perspectiva mostra **Rebaixo Italiano** para módulo de cozinha? | Confirmar: RI cozinha = R$ 950. |
-| C3 | O módulo de **lavanderia** tem cuba/tanque? | Confirmar: RI lavanderia = R$ 650. |
+| C2 | O detalhe de granito ou perspectiva mostra **Rebaixo Italiano** para módulo de cozinha? | Confirmar: RI cozinha = R$950. |
+| C2b | O módulo de cozinha **NÃO tem rebaixo especificado** no detalhe de granito? | Aplicar **Rebaixo Convencional cozinha** como padrão — Gabriel: *"se não tiver rebaixo especificado no projeto, usa rebaixo convencional"*. Registrar como pendência se houver dúvida. |
+| C2c | O detalhe de granito mostra rebaixo com perfil diferente do Italiano? | Identificar tipo: **Convencional** (mais simples) ou **Romano** (perfil arredondado). Usar nome correto na tabela abaixo. |
+| C3 | O módulo de **lavanderia** tem cuba/tanque? | Confirmar: RI lavanderia = R$650. |
 | C4 | O Scanner presumiu **Rebaixo Italiano para banheiro** sem confirmação explícita no detalhe de granito? | **REMOVER o RI do banheiro.** Banheiro não recebe RI por presunção. |
-| C5 | O módulo tem recorte de **cooktop** indicado no detalhe de granito? | Confirmar Recorte cooktop R$ 50. |
+| C5 | O módulo tem recorte de **cooktop** indicado no detalhe de granito? | Confirmar Recorte cooktop R$50. |
 | C6 | O projeto indica ponto hidráulico de **filtro/dispenser** na planta hidráulica? | NÃO incluir furo. Marcar como pendência — confirmar se o dispenser está no tampo ou na parede. |
 | C7 | O detalhe de granito (vista GRANITO ou SUPERIOR-GRANITO) mostra **CORTE CUBA** ou recorte para cuba embutida? | Adicionar serviço **"Furo cuba embutir"** ao item. Nome exato obrigatório — não usar "recorte cuba" nem "corte cuba". |
 | C8 | O módulo tem cuba, pia ou tanque (cozinha, banheiro, lavanderia)? | Adicionar serviço **"Furo torneira"** ao item — este é padrão para TODOS os módulos com cuba. Remover apenas se o projeto indicar EXPLICITAMENTE "torneira de parede — sem furo no tampo". Em caso de dúvida: **manter o furo torneira.** |
+| C8b | O projeto indica **múltiplos pontos hidráulicos** no tampo (ex: 2 registros + torneira)? | Quantidade do Furo torneira = número de pontos visíveis. Padrão Gabriel: bancada de cozinha com torneira + 2 registros = qtd 3. Se nao indicado explicitamente, usar qtd 1. |
+| C9 | O módulo tem **cuba esculpida** (cuba da mesma pedra, escavada no tampo, sem encaixe diferente)? | Marcar 🔴 PENDÊNCIA HUMANA — cuba esculpida implica maior área de material e mão de obra diferenciada. Não dimensionar no Stage 3 sem confirmação. |
+| C10 | A bancada está **suspensa sem móvel embaixo** (flutuando, com pés expostos, ou é lavatório suspenso)? | Trocar serviço: usar **"Instalacao tampo sobre mao francesa"** em vez de "Instalacao tampo sobre base". |
 
 ### BLOCO D — Itens ocultos frequentemente esquecidos
 
@@ -319,8 +327,10 @@ Ação: [o que deve ser informado ao Stage 3]
 
 > **Regra de ouro:** na dúvida, use PENDÊNCIA HUMANA. Nunca use REMOVIDO para um alerta que você simplesmente não consegue ver nas pranchas — ausência de evidência nas pranchas não é evidência de ausência.
 
+> **Linguagem de pendências:** NUNCA use "verificar in loco", "verificar em campo", "confirmar in loco" ou "visita técnica". Este é um pré-orçamento sem visita ao local. Use "revisar com a arquiteta" ou "confirmar nas pranchas" quando necessário.
+
 **Alertas que exigem inspeção visual direta nas pranchas:**
-- 🔴 "Bancada com pé" — voltar à perspectiva e vistas laterais/frontais do módulo e descrever **o que você vê** na lateral/frente exposta do módulo. Se não for possível confirmar nem negar pelas pranchas → **NÃO CONFIRMADO — PENDÊNCIA HUMANA**. Este detalhe frequentemente só é resolvido em visita técnica ou com a arquiteta. Nunca usar REMOVIDO para este alerta sem evidência visual explícita que descarte a face vertical.
+- 🔴 "Bancada com pé" — voltar à perspectiva e vistas laterais/frontais do módulo e descrever **o que você vê** na lateral/frente exposta do módulo. Se não for possível confirmar nem negar pelas pranchas → **NÃO CONFIRMADO — PENDÊNCIA HUMANA**. Este detalhe frequentemente só é resolvido em revisão com a arquiteta. Nunca usar REMOVIDO para este alerta sem evidência visual explícita que descarte a face vertical.
 - 🔴 "Material na legenda sem callout" — confirmar se há qualquer superfície de pedra visível nas vistas (tampo horizontal, prateleira, nicho interno). Descrever o que há ou não há.
 - 🔴 "Rodapé por evidência visual" — verificar se a faixa é realmente escura e consistente com pedra, ou se é base de MDF. Aplicar regra B5 se for módulo café/bar.
 
@@ -384,7 +394,10 @@ Itens com pendência aberta: [lista]
 | Furo dispenser | "furo para filtro", "abertura dispenser" |
 | Furo para torre de tomada | "furo torre", "furo tomada", "furo para torre" |
 | Instalação tampo sobre base | "instalação", "instalação tampo" |
-| Instalação rodapé | "instalação de rodapé", "inst. rodapé" |
+| Instalacao rodape | "instalação de rodapé", "inst. rodapé" |
+| Rebaixo Convencional cozinha | "rebaixo convencional", "RI convencional", "rebaixo padrão" |
+| Rebaixo Romano cozinha | "rebaixo romano", "romano", "perfil romano" |
+| Instalacao tampo sobre mao francesa | "mão francesa", "instalação mão francesa", "inst. francesa" |
 
 `;
 
@@ -426,7 +439,7 @@ O processo por dimensão é:
 **Se você se pegar relendo a mesma prancha pela segunda vez para a mesma dimensão:**
 → PARE.
 → Use o valor padrão da tabela de fallback abaixo.
-→ Marque \`(padrão — confirmar em campo)\`.
+→ Marque \`(padrão — estimativa)\`.
 → Avance.
 
 ---
@@ -454,7 +467,7 @@ O processo por dimensão é:
 | Banheiro (tampo) | cota da vista frontal | **0,57 m** | — (sem rodapé) |
 
 Estes valores são padrão de mercado. Eles estarão corretos em 90% dos casos.
-Marque com \`(padrão — confirmar em campo)\` quando usados.
+Marque com \`(padrão — estimativa)\` quando usados.
 
 ---
 
@@ -494,11 +507,13 @@ Use fallback + \`status: "parcial"\` + pendência descrevendo a incerteza quando
 ### Serviços herdados do Stage 2 — copiar sem re-verificar
 
 Para cada item, copie os serviços já listados pelo Stage 2:
-- Rebaixo Italiano
+- Rebaixo Italiano cozinha (ou Convencional ou Romano, conforme identificado)
+- Rebaixo Convencional cozinha — **se o Stage 2 não identificou nenhum rebaixo para um módulo de cozinha, aplicar Rebaixo Convencional como padrão**
 - Recorte cooktop
 - Furo cuba embutir
-- Furo torneira
+- Furo torneira (atenção à quantidade — pode ser > 1)
 - Furo para torre de tomada
+- Instalacao tampo sobre mao francesa (quando Stage 2 marcou C10)
 
 ### Serviços a adicionar no Stage 3 — dependem de medição
 
@@ -506,11 +521,43 @@ Para cada item, copie os serviços já listados pelo Stage 2:
 |---|---|---|
 | Tampo (Granito Tabaco, 3 cm) | Borda Reta Meia Esquadria | ml = perímetro exposto |
 | Tampo (Granito Branco Siena, 2 cm) | Acabamento Slim | ml = perímetro exposto |
-| Qualquer tampo | Instalação tampo sobre base | ml = comprimento frontal |
+| Qualquer tampo | Instalação tampo sobre base | ml = comprimento frontal. **Mínimo: 1,00 ml** independente do comprimento real — padrão Gabriel. |
+| Tampo suspenso (mão francesa) | Instalacao tampo sobre mao francesa | ml = comprimento frontal. **Mínimo: 1,00 ml.** |
 | Qualquer rodapé | Instalação rodapé | ml = PERÍMETRO EXPOSTO do rodapé |
 
+---
+
+## TABELA DE PREÇOS UNITÁRIOS — referência para validação
+
+Fonte: orçamento real Luísa Marques (mai/2026). Use estes valores para sanity-check.
+
+### Materiais (R$/m²)
+| Material | Espessura | R$/m² |
+|---|---|---|
+| Granito Tabaco (G. Marrom Tabaco) | 3 cm | R$970 |
+| Granito Branco Siena | 2 cm | R$761 |
+
+### Serviços (preços unitários confirmados)
+| Serviço | Unidade | Preço |
+|---|---|---|
+| Borda Reta Meia Esquadria | ml | R$100 |
+| Acabamento Slim | ml | R$30 |
+| Instalacao tampo sobre base | ml (min 1,00ml) | R$120 |
+| Instalacao sobre movel | ml (min 1,00ml) | R$120 |
+| Instalacao tampo sobre mao francesa | ml (min 1,00ml) | R$120 (estimado) |
+| Instalacao rodape | ml | R$40 |
+| Rebaixo Italiano cozinha | un | R$950 |
+| Rebaixo Italiano lavanderia | un | R$650 |
+| Rebaixo Convencional cozinha | un | R$700 (estimado — confirmar) |
+| Rebaixo Romano cozinha | un | R$800 (estimado — confirmar) |
+| Furo cuba embutir | un | R$80 |
+| Furo torneira | un | R$20 |
+| Furo dispenser | un | R$20 |
+| Furo para torre de tomada | un | R$20 |
+| Recorte cooktop | un | R$50 |
+
 **Perímetro exposto do tampo** = faces do tampo não encostadas em parede ou móvel.
-Se não for possível confirmar quais faces são livres → usar comprimento frontal e marcar \`(lateral pendente — confirmar em campo)\`.
+Se não for possível confirmar quais faces são livres → usar comprimento frontal e marcar \`(lateral pendente — estimativa)\`.
 
 **Perímetro exposto do rodapé** = soma de todas as faces de granito na base do módulo que ficam expostas:
 - Tampo reto: frontal apenas.
@@ -539,10 +586,11 @@ PASSO 1 — Comprimento:
 PASSO 2 — Profundidade:
   Na mesma vista, ler a cota vertical total.
   Se legível: Profundidade = X,XX m  ← FECHADO
-  Se não legível: Profundidade = [padrão do ambiente] (padrão — confirmar em campo)  ← FECHADO
+  Se não legível: Profundidade = [padrão do ambiente] (padrão — estimativa)  ← FECHADO
 
 PASSO 3 — Calcular:
   Área bruta = Comprimento × Profundidade
+  Área com perda = Área bruta × 1,10  ← SEMPRE aplicar 10% de margem de corte (padrão Gabriel)
 
 PASSO 4 — Rodapia (se marcada pelo Stage 2):
   Ler altura da saia na vista frontal ou no nome do item.
@@ -552,7 +600,7 @@ PASSO 4 — Rodapia (se marcada pelo Stage 2):
 PASSO 5 — Borda:
   Ler comprimento frontal da vista FRONTAL.
   Borda frontal = X,XX ml  ← FECHADO
-  Borda lateral = "confirmar em campo" (salvo se claramente visível)
+  Borda lateral = "estimativa" (salvo se claramente visível)
 
 PASSO 6 — Escrever bloco de output.
 PASSO 7 — Avançar para o próximo item.
@@ -568,7 +616,7 @@ PASSO 1 — Comprimento frontal:
 
 PASSO 2 — Altura:
   Se cotada na prancha: usar o valor cotado.
-  Se não cotada: usar 0,10 m (padrão — confirmar em campo).
+  Se não cotada: usar 0,10 m (padrão — estimativa).
   Escrever: Altura = X,XX m  ← FECHADO
 
 PASSO 3 — Calcular:
@@ -589,7 +637,7 @@ Vista utilizada: [GRANITO Prancha XX / SUPERIOR Prancha XX / FRONTAL Prancha XX]
 
 DIMENSÕES:
   Comprimento: X,XX m
-  Profundidade: X,XX m  (ou: 0,60 m — padrão, confirmar em campo)
+  Profundidade: X,XX m  (ou: 0,60 m — padrão, estimativa)
   Área bruta: X,XX m²
   Rodapia/saia: [SIM — X cm → +X,XX m² | NÃO]
   Faces verticais: [PENDÊNCIA — confirmar com arquiteta | NÃO]
@@ -597,7 +645,7 @@ DIMENSÕES:
 
 BORDA:
   Frontal: X,XX ml
-  Lateral: [X,XX ml | confirmar em campo]
+  Lateral: [X,XX ml | estimativa]
   TOTAL BORDA: X,XX ml
 
 SERVIÇOS (herdados do Stage 2 + adicionados agora):
@@ -622,6 +670,8 @@ Regras do JSON:
 - \`borda_ml\`: perímetro de borda confirmado (sem laterais pendentes).
 - \`servicos\`: lista de serviços com \`nome\` exato da tabela, \`qtd\` numérica e \`unidade\` (\`"un"\` ou \`"ml"\`).
 - Pendências não bloqueiam o cálculo — o script inclui o item com o que foi confirmado e lista as pendências separadamente.
+- **Itens com \`status: "confirmado"\` DEVEM ter \`"pendencias": []\` — se há dúvida real, use \`"parcial"\` em vez de \`"confirmado"\`.**
+- **PROIBIDO** usar nas pendências: "verificar in loco", "verificar em campo", "confirmar in loco", "visita técnica" ou qualquer frase que implique visita ao local. Este é um pré-orçamento sem visita — use "revisar com a arquiteta" se necessário.
 
 **Nomes de serviços aceitos pelo script** (usar exatamente assim):
 \`Rebaixo Italiano cozinha\` | \`Rebaixo Italiano lavanderia\` | \`Recorte cooktop\` |
@@ -677,3 +727,16 @@ Emitir o JSON completo com todos os itens (confirmados, parciais e aguardando).
 Itens com \`status: "aguardando"\` devem ter \`area_m2: 0\` e \`servicos: []\`.
 
 `;
+
+
+
+
+
+
+
+
+
+
+
+
+

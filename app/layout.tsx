@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
 import Script from "next/script";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Offer Optimizer - AI Workflow Builder",
@@ -17,11 +15,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="pt-BR" className={`dark ${GeistSans.variable}`}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body className={inter.className} style={{ overflow: 'hidden', width: '100vw', height: '100vh' }}>
+      <body className={GeistSans.className} style={{ overflow: 'hidden', width: '100vw', height: '100vh' }}>
         {/* Google Tag Manager (noscript) */}
         <noscript dangerouslySetInnerHTML={{ __html: `<iframe src="https://www.googletagmanager.com/ns.html?id=GTM-WRW53MSC" height="0" width="0" style="display:none;visibility:hidden"></iframe>` }} />
         {children}

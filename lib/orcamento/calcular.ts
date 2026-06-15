@@ -6,37 +6,51 @@ import type {
   ResultadoOrcamento,
 } from './types';
 
+// ─── Tabela de preços — conferida contra orçamento real (Luísa Marques, mai/2026) ──
+// Fonte: Orcamento_Luisa_Marques.pdf
+// Preços por m² calculados retroativamente: Granito Tabaco ≈ R$970/m² (rodapés)
+// e R$990-1030/m² (tampos com maior complexidade). Usar R$970 como base.
+
 const PRECO_MATERIAL: Record<string, number> = {
-  'Granito Tabaco': 1000,
-  'Granito Branco Siena': 760,
-  'Branco Parana': 1800,
-  'Marmore Parana': 1800,
-  'Quartzo White': 1250,
-  'Quartzo Branco Norte': 1200,
-  'Onix Cristallo': 4250,
-  'Granito padrao': 850,
+  // Confirmados no orçamento real
+  'Granito Tabaco':          970,   // G. Marrom Tabaco 3cm — R$970/m² (verificado em rodapés)
+  'Granito Marrom Tabaco':   970,   // alias nome do sistema EASY
+  'Granito Branco Siena':    761,   // 2cm — R$761/m² (BWC Luísa Marques)
+  // Estimados / a confirmar com Gabriel
+  'Branco Parana':          1800,
+  'Marmore Parana':         1800,
+  'Quartzo White':          1250,
+  'Quartzo Branco Norte':   1200,
+  'Onix Cristallo':         4250,
+  'Granito padrao':          850,
 };
 
 const PRECO_SERVICO: Record<string, number> = {
-  'Rebaixo Italiano cozinha': 950,
-  'Rebaixo Italiano lavanderia': 650,
-  'Rebaixo Italiano outros': 650,
-  'Recorte cooktop': 50,
-  'Furo cuba embutir': 80,
-  'Furo torneira': 20,
-  'Furo dispenser': 20,
-  'Furo para torre de tomada': 20,
-  'Borda Reta Meia Esquadria': 100,
-  'Acabamento Slim': 30,
-  'Instalacao tampo sobre base': 120,
-  'Instalacao rodape': 40,
-  'Instalacao sobre movel': 120,
-  'Instalacao revestimento': 100,
-  'Canaleta LED': 22,
-  'Cuba esculpida simples': 900,
-  'Cuba esculpida com bandeja': 1350,
-  'Champanheira': 750,
-  'Tampa removivel': 300,
+  // ── Confirmados no orçamento real (Luísa Marques) ──
+  'Rebaixo Italiano cozinha':          950,  // un
+  'Rebaixo Italiano lavanderia':       650,  // un
+  'Rebaixo Italiano outros':           650,  // un — fallback
+  'Recorte cooktop':                    50,  // un
+  'Furo cuba embutir':                  80,  // un
+  'Furo torneira':                      20,  // un (pode ser qtd > 1 se múltiplos registros)
+  'Furo dispenser':                     20,  // un
+  'Furo para torre de tomada':          20,  // un
+  'Borda Reta Meia Esquadria':         100,  // ml
+  'Acabamento Slim':                    30,  // ml (2cm)
+  'Instalacao tampo sobre base':       120,  // ml — mínimo 1,00ml
+  'Instalacao rodape':                  40,  // ml
+  'Instalacao sobre movel':            120,  // ml — mesmo valor de "sobre base"
+  // ── Aguardando confirmação de preço com Gabriel ──
+  'Instalacao tampo sobre mao francesa': 120, // ml — estimado igual ao sobre base; confirmar
+  'Rebaixo Convencional cozinha':        700, // un — estimado; confirmar com Gabriel
+  'Rebaixo Romano cozinha':              800, // un — estimado; confirmar com Gabriel
+  // ── Extras ──
+  'Instalacao revestimento':            100,
+  'Canaleta LED':                        22,
+  'Cuba esculpida simples':             900,
+  'Cuba esculpida com bandeja':        1350,
+  'Champanheira':                       750,
+  'Tampa removivel':                    300,
 };
 
 function resolvePrecoMaterial(nome: string): number | null {

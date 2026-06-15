@@ -13,7 +13,7 @@ const PRODUCT_NAME = "OrçamentarIA";
 const BENEFITS = [
   {
     title: "Orçamento em minutos",
-    desc: "O que levava horas agora sai em menos de 10 minutos. Sem digitar medida por medida.",
+    desc: "O que levava horas agora sai em menos de 10 minutos.",
   },
   {
     title: "Revisão item por item",
@@ -203,7 +203,12 @@ export default function LpPage() {
             {/* Video demonstração */}
             <VideoDemo />
 
-            <CtaButton large label="Falar com especialista no WhatsApp →" />
+            <a
+              href="/orcamentaria-marmoraria/demo"
+              className="inline-block bg-violet-600 hover:bg-violet-500 active:scale-95 text-white font-semibold rounded transition-all px-8 py-4 text-lg"
+            >
+                Mexa na ferramenta agora com um projeto real →
+            </a>
           </Reveal>
         </section>
 
@@ -217,10 +222,11 @@ export default function LpPage() {
             </h2>
           </Reveal>
 
-          <div className="flex flex-col gap-4 mb-12 max-w-2xl">
+          <div className="flex flex-col gap-4 max-w-2xl">
             {[
               "Quem tem um pré-orçamento revisa muito mais rápido.",
               "Envia orçamento mais rápido que o concorrente.",
+              "Quem tá na frente não perde horas analisando projeto e anotando em planilha ou papel.",
             ].map((item, i) => (
               <Reveal key={i} dir="left" delay={i * 80}>
                 <p className="text-zinc-300 text-lg leading-relaxed border-l-2 border-violet-800 pl-5">
@@ -229,12 +235,6 @@ export default function LpPage() {
               </Reveal>
             ))}
           </div>
-
-          <Reveal dir="up" delay={200}>
-            <p className="text-zinc-400 text-lg leading-relaxed max-w-2xl border-l-2 border-violet-800 pl-5">
-              <strong className="text-zinc-200">Quem tá na frente não perde horas analisando projeto e anotando em planilha ou papel.</strong>
-            </p>
-          </Reveal>
         </section>
 
         <Divider />
@@ -255,7 +255,7 @@ export default function LpPage() {
             ].map(({ step, title, desc }, i) => (
               <Reveal key={step} dir="up" delay={i * 100}>
                 <div className="relative p-6 border border-zinc-800 rounded bg-zinc-900/30">
-                  <div className="text-4xl font-black text-violet-900/60 mb-4">{step}</div>
+                  <div className="text-4xl font-black text-violet-400 mb-4">{step}</div>
                   <h3 className="text-white font-semibold text-lg mb-2">{title}</h3>
                   <p className="text-zinc-400 text-sm leading-relaxed">{desc}</p>
                 </div>
@@ -289,44 +289,42 @@ export default function LpPage() {
         <Divider />
 
         {/* ── 5. PARA QUEM É ──────────────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-6 py-20">
-          <div className="max-w-2xl">
-            <Reveal dir="left">
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-8 leading-tight">
-                Feito pra quem<br />vive de marmoraria
-              </h2>
-              <ul className="space-y-4 mb-10">
+        <section className="max-w-5xl mx-auto px-6 py-20 text-center">
+          <Reveal dir="up">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-8 leading-tight">
+              Feito pra quem vive de marmoraria
+            </h2>
+            <ul className="space-y-4 mb-10 inline-flex flex-col items-start text-left">
+              {[
+                "Donos de marmoraria que orçam 5 ou mais projetos por semana",
+                "Equipes que perdem tempo copiando medidas à mão de prancha em prancha",
+                "Quem quer crescer o faturamento sem precisar contratar mais gente pra orçar",
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="text-violet-400 mt-1 flex-shrink-0">✓</span>
+                  <span className="text-zinc-300 text-base leading-relaxed">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+
+          <Reveal dir="up" delay={150}>
+            <div className="border border-zinc-700 rounded p-6 bg-zinc-900/30 inline-block text-left max-w-xl w-full">
+              <p className="text-zinc-400 text-sm font-semibold uppercase tracking-widest mb-4">Não é pra você se...</p>
+              <ul className="space-y-3">
                 {[
-                  "Donos de marmoraria que orçam 5 ou mais projetos por semana",
-                  "Equipes que perdem tempo copiando medidas à mão de prancha em prancha",
-                  "Quem quer crescer o faturamento sem precisar contratar mais gente pra orçar",
+                  "Você orça 1 projeto por mês e tem tempo de sobra",
+                  "Prefere continuar com planilha e não quer mudar nada",
+                  "Não tem interesse em fechar mais contratos mais rápido",
                 ].map((item, i) => (
                   <li key={i} className="flex items-start gap-3">
-                    <span className="text-violet-400 mt-1 flex-shrink-0">✓</span>
-                    <span className="text-zinc-300 text-base leading-relaxed">{item}</span>
+                    <span className="text-zinc-400 mt-1 flex-shrink-0 text-xs">✕</span>
+                    <span className="text-zinc-300 text-sm leading-relaxed">{item}</span>
                   </li>
                 ))}
               </ul>
-            </Reveal>
-
-            <Reveal dir="up" delay={150}>
-              <div className="border border-zinc-700 rounded p-6 bg-zinc-900/30">
-                <p className="text-zinc-400 text-sm font-semibold uppercase tracking-widest mb-4">Não é pra você se...</p>
-                <ul className="space-y-3">
-                  {[
-                    "Você orça 1 projeto por mês e tem tempo de sobra",
-                    "Prefere continuar com planilha e não quer mudar nada",
-                    "Não tem interesse em fechar mais contratos mais rápido",
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <span className="text-zinc-400 mt-1 flex-shrink-0 text-xs">✕</span>
-                      <span className="text-zinc-300 text-sm leading-relaxed">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </Reveal>
-          </div>
+            </div>
+          </Reveal>
         </section>
 
         <Divider />

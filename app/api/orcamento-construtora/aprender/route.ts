@@ -95,9 +95,9 @@ export async function POST(request: Request) {
     if (contentType.includes('multipart/form-data')) {
       // Encaminha o body bruto sem fazer parse no Next.js (evita limite de 1MB)
       // O Python recebe o multipart diretamente com o boundary correto
-      res = await fetch(`${EXTRACTOR_URL}/aprender/${action}`, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      res = await (fetch as any)(`${EXTRACTOR_URL}/aprender/${action}`, {
         method: 'POST',
-        // @ts-expect-error — Node.js fetch aceita ReadableStream com duplex
         body: request.body,
         headers: { 'content-type': contentType },
         duplex: 'half',

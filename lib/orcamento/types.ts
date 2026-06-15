@@ -50,3 +50,16 @@ export interface ResultadoOrcamento {
   porAmbiente: Record<string, number>;
   porMaterial: Record<string, { area: number; valor: number }>;
 }
+
+export interface ApiUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+export interface TokenLog {
+  stage: string;
+  usage: ApiUsage;
+  thinking?: string | null;
+}
