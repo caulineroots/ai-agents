@@ -14,10 +14,6 @@ const DEMO_IMAGE_URLS = Array.from({ length: 13 }, (_, i) =>
   `/demo-images/prancha-${String(i + 1).padStart(2, '0')}.webp`
 );
 
-const DEMO_HINTS: Record<number, string> = {
-  1: 'Aqui a IA errou — o serviço "Furo cuba embutir" deveria estar listado, mas não foi identificado na prancha.',
-  5: 'Aqui a IA errou — a borda deveria ser ~4.6 ml (soma dos lados do tampo), não 1.8 ml. O serviço "Furo para torre de tomada" também ficou de fora.',
-};
 
 export default function DemoPage() {
   const [step, setStep] = useState<3 | 4>(3);
@@ -121,7 +117,7 @@ export default function DemoPage() {
             imageUrls={DEMO_IMAGE_URLS}
             flushRef={flushRef}
             onDone={handleDoneReview}
-            demoHints={DEMO_HINTS}
+
           />
         )}
         {step === 4 && (
