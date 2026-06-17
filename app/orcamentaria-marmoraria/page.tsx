@@ -215,14 +215,14 @@ export default function LpPage() {
         <Divider />
 
         {/* ── 2. PROBLEMA ─────────────────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-6 py-20">
+        <section className="max-w-5xl mx-auto px-6 py-20 text-center">
           <Reveal dir="up" className="mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold text-white leading-tight">
               Você só demora pra fazer orçamentos porque precisa começar sempre do zero.
             </h2>
           </Reveal>
 
-          <div className="flex flex-col gap-4 max-w-2xl">
+          <div className="flex flex-col gap-4 max-w-2xl mx-auto text-left">
             {[
               "Quem tem um pré-orçamento revisa muito mais rápido.",
               "Não perde horas analisando projeto e anotando em planilha ou papel.",
@@ -300,8 +300,8 @@ export default function LpPage() {
         <Divider />
 
         {/* ── 4.5 PREÇO ───────────────────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-6 py-20">
-          <Reveal dir="up" className="max-w-2xl">
+        <section className="max-w-5xl mx-auto px-6 py-20 text-center">
+          <Reveal dir="up" className="max-w-2xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">Quanto custa?</h2>
             <p className="text-zinc-400 text-lg leading-relaxed mb-6">
               Depende do volume de projetos da sua marmoraria por semana. Quem orça 5 projetos tem uma necessidade diferente de quem orça 20.
