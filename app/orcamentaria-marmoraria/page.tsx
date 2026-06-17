@@ -266,6 +266,46 @@ export default function LpPage() {
 
         <Divider />
 
+        {/* ── 3.5 POR DENTRO DA FERRAMENTA ────────────────────────────────── */}
+        <section className="max-w-5xl mx-auto px-6 py-20">
+          <Reveal dir="up" className="text-center mb-12">
+            <p className="text-xs font-semibold tracking-widest text-zinc-500 uppercase mb-3">Por dentro</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white">
+              Veja como fica na prática
+            </h2>
+          </Reveal>
+
+          <div className="flex flex-col gap-8">
+            <Reveal dir="left">
+              <div className="flex flex-col sm:flex-row items-start gap-6">
+                <div className="sm:w-1/3 flex-shrink-0 pt-2">
+                  <p className="text-sm font-semibold text-violet-400 uppercase tracking-widest mb-2">Revisão item por item</p>
+                  <p className="text-zinc-400 text-base leading-relaxed">A IA identifica cada peça do projeto — tampo, rodapé, material, medidas. Você vê tudo lado a lado com a prancha original e corrige o que precisar.</p>
+                </div>
+                <div className="flex-1 rounded overflow-hidden border border-zinc-800 shadow-2xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/screenshot-revisao.webp" alt="Tela de revisão do OrçamentarIA" className="w-full object-cover" />
+                </div>
+              </div>
+            </Reveal>
+
+            <Reveal dir="right">
+              <div className="flex flex-col sm:flex-row-reverse items-start gap-6">
+                <div className="sm:w-1/3 flex-shrink-0 pt-2">
+                  <p className="text-sm font-semibold text-violet-400 uppercase tracking-widest mb-2">Orçamento gerado</p>
+                  <p className="text-zinc-400 text-base leading-relaxed">Com tudo revisado, o sistema gera o orçamento completo — total por ambiente, por material, detalhado. Pronto pra enviar pro cliente.</p>
+                </div>
+                <div className="flex-1 rounded overflow-hidden border border-zinc-800 shadow-2xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/screenshot-orcamento.webp" alt="Tela de orçamento do OrçamentarIA" className="w-full object-cover" />
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        <Divider />
+
         {/* ── 4. BENEFÍCIOS ───────────────────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-6 py-20">
           <Reveal dir="up" className="text-center mb-14">
@@ -284,6 +324,22 @@ export default function LpPage() {
               </Reveal>
             ))}
           </div>
+        </section>
+
+        <Divider />
+
+        {/* ── 4.5 PREÇO ───────────────────────────────────────────────────── */}
+        <section className="max-w-5xl mx-auto px-6 py-20">
+          <Reveal dir="up" className="max-w-2xl">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">Quanto custa?</h2>
+            <p className="text-zinc-400 text-lg leading-relaxed mb-6">
+              Depende do volume de projetos da sua marmoraria por semana. Quem orça 5 projetos tem uma necessidade diferente de quem orça 20.
+            </p>
+            <p className="text-zinc-300 text-lg leading-relaxed mb-8">
+              Fale com a gente, conta quantos projetos você faz por semana, e recebe uma proposta no mesmo dia.
+            </p>
+            <CtaButton label="Falar no WhatsApp sobre preço →" />
+          </Reveal>
         </section>
 
         <Divider />
@@ -353,10 +409,13 @@ export default function LpPage() {
         {/* ── 7. CTA FINAL ────────────────────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-6 py-24 text-center">
           <Reveal dir="up">
-            <h2 className="text-3xl sm:text-5xl font-bold text-white mb-10 leading-tight">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mb-6 leading-tight">
               Seu próximo orçamento<br />
               <span className="text-violet-400">pode sair em 5 minutos.</span>
             </h2>
+            <p className="text-zinc-500 text-base mb-10">
+              Conseguimos integrar apenas <span className="text-zinc-300 font-semibold">1 nova marmoraria por semana.</span>
+            </p>
             <CtaButton large label="Falar no WhatsApp agora →" />
           </Reveal>
         </section>
