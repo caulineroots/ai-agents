@@ -168,6 +168,14 @@ export default function LpPage() {
         <header className="sticky top-0 z-50 bg-black/90 backdrop-blur border-b border-zinc-800/60">
           <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
             <span className="text-lg font-bold tracking-tight text-white">{PRODUCT_NAME}</span>
+            <a
+              href={WA_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm px-4 py-2 border border-violet-700 text-violet-300 rounded hover:bg-violet-900/30 transition-all"
+            >
+              Falar no WhatsApp
+            </a>
           </div>
         </header>
 
@@ -300,6 +308,7 @@ export default function LpPage() {
             <p className="text-zinc-300 text-lg leading-relaxed mb-8">
               Manda uma mensagem contando quantos projetos você faz por semana. A gente te passa o valor no mesmo dia.
             </p>
+            <CtaButton label="Falar no WhatsApp" />
           </Reveal>
         </section>
 
