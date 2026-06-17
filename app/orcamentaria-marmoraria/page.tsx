@@ -104,7 +104,7 @@ function VideoDemo() {
           <iframe
             className="absolute inset-0 w-full h-full"
             src={`https://www.youtube.com/embed/${VIDEO_ID}?autoplay=1&rel=0&modestbranding=1`}
-            title="OrçamentarIA — Demonstração"
+            title="OrçamentarIA: Demonstração"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
@@ -269,9 +269,8 @@ export default function LpPage() {
         {/* ── 3.5 POR DENTRO DA FERRAMENTA ────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-6 py-20">
           <Reveal dir="up" className="text-center mb-12">
-            <p className="text-xs font-semibold tracking-widest text-zinc-500 uppercase mb-3">Por dentro</p>
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Veja como fica na prática
+              Veja por dentro da plataforma
             </h2>
           </Reveal>
 
@@ -280,7 +279,7 @@ export default function LpPage() {
               <div className="flex flex-col sm:flex-row items-start gap-6">
                 <div className="sm:w-1/3 flex-shrink-0 pt-2">
                   <p className="text-sm font-semibold text-violet-400 uppercase tracking-widest mb-2">Revisão item por item</p>
-                  <p className="text-zinc-400 text-base leading-relaxed">A IA identifica cada peça do projeto — tampo, rodapé, material, medidas. Você vê tudo lado a lado com a prancha original e corrige o que precisar.</p>
+                  <p className="text-zinc-400 text-base leading-relaxed">A IA identifica cada peça do projeto: tampo, rodapé, material, medidas. Você vê tudo lado a lado com a prancha original e corrige o que precisar.</p>
                 </div>
                 <div className="flex-1 rounded overflow-hidden border border-zinc-800 shadow-2xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -293,7 +292,7 @@ export default function LpPage() {
               <div className="flex flex-col sm:flex-row-reverse items-start gap-6">
                 <div className="sm:w-1/3 flex-shrink-0 pt-2">
                   <p className="text-sm font-semibold text-violet-400 uppercase tracking-widest mb-2">Orçamento gerado</p>
-                  <p className="text-zinc-400 text-base leading-relaxed">Com tudo revisado, o sistema gera o orçamento completo — total por ambiente, por material, detalhado. Pronto pra enviar pro cliente.</p>
+                  <p className="text-zinc-400 text-base leading-relaxed">Com tudo revisado, o sistema gera o orçamento completo: total por ambiente, por material, detalhado. Pronto pra enviar pro cliente.</p>
                 </div>
                 <div className="flex-1 rounded overflow-hidden border border-zinc-800 shadow-2xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -336,7 +335,7 @@ export default function LpPage() {
               Depende do volume de projetos da sua marmoraria por semana. Quem orça 5 projetos tem uma necessidade diferente de quem orça 20.
             </p>
             <p className="text-zinc-300 text-lg leading-relaxed mb-8">
-              Fale com a gente, conta quantos projetos você faz por semana, e recebe uma proposta no mesmo dia.
+              Manda uma mensagem contando quantos projetos você faz por semana. A gente te passa o valor no mesmo dia.
             </p>
             <CtaButton label="Falar no WhatsApp sobre preço →" />
           </Reveal>
