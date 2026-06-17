@@ -67,7 +67,7 @@ function Reveal({
 
 // ─── COMPONENTES INTERNOS ─────────────────────────────────────────────────────
 
-function CtaButton({ label = "Falar no WhatsApp agora →", large = false }: { label?: string; large?: boolean }) {
+function CtaButton({ label = "Falar no WhatsApp agora", large = false }: { label?: string; large?: boolean }) {
   return (
     <a
       href={WA_LINK}
@@ -206,7 +206,7 @@ export default function LpPage() {
               href="/orcamentaria-marmoraria/demo"
               className="inline-block bg-violet-600 hover:bg-violet-500 active:scale-95 text-white font-semibold rounded transition-all px-8 py-4 text-lg"
             >
-                Mexa na ferramenta agora com um projeto real →
+                Mexa na ferramenta agora com um projeto real
             </a>
           </Reveal>
         </section>
@@ -386,7 +386,7 @@ export default function LpPage() {
             <p className="text-zinc-500 text-base mb-10">
               Conseguimos integrar apenas <span className="text-zinc-300 font-semibold">1 nova marmoraria por semana.</span>
             </p>
-            <CtaButton large label="Falar no WhatsApp agora →" />
+            <CtaButton large label="Falar no WhatsApp agora" />
           </Reveal>
         </section>
 
@@ -403,7 +403,7 @@ export default function LpPage() {
               rel="noopener noreferrer"
               className="text-zinc-400 text-sm hover:text-zinc-200 transition-colors"
             >
-              WhatsApp →
+              WhatsApp
             </a>
           </div>
         </footer>
