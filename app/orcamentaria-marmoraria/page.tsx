@@ -299,28 +299,6 @@ export default function LpPage() {
 
         <Divider />
 
-        {/* ── 4. BENEFÍCIOS ───────────────────────────────────────────────── */}
-        <section className="max-w-5xl mx-auto px-6 py-20">
-          <Reveal dir="up" className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              O que muda no seu dia a dia
-            </h2>
-          </Reveal>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {BENEFITS.map(({ title, desc }, i) => (
-              <Reveal key={title} dir="up" delay={i * 80}>
-                <div className="p-5 border border-zinc-800 rounded bg-zinc-900/30 hover:border-zinc-700 transition-colors">
-                  <h3 className="text-white font-semibold mb-2">{title}</h3>
-                  <p className="text-zinc-400 text-sm leading-relaxed">{desc}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        <Divider />
-
         {/* ── 4.5 PREÇO ───────────────────────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-6 py-20">
           <Reveal dir="up" className="max-w-2xl">
