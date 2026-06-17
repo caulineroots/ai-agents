@@ -268,12 +268,6 @@ export default function LpPage() {
 
         {/* ── 3.5 POR DENTRO DA FERRAMENTA ────────────────────────────────── */}
         <section className="max-w-5xl mx-auto px-6 py-20">
-          <Reveal dir="up" className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Veja por dentro da plataforma
-            </h2>
-          </Reveal>
-
           <div className="flex flex-col gap-8">
             <Reveal dir="left">
               <div className="flex flex-col sm:flex-row items-start gap-6">
