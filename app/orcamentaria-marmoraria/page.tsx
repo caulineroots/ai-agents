@@ -225,8 +225,8 @@ export default function LpPage() {
           <div className="flex flex-col gap-4 max-w-2xl">
             {[
               "Quem tem um pré-orçamento revisa muito mais rápido.",
+              "Não perde horas analisando projeto e anotando em planilha ou papel.",
               "Envia orçamento mais rápido que o concorrente.",
-              "Quem tá na frente não perde horas analisando projeto e anotando em planilha ou papel.",
             ].map((item, i) => (
               <Reveal key={i} dir="left" delay={i * 80}>
                 <p className="text-zinc-300 text-lg leading-relaxed border-l-2 border-violet-800 pl-5">
