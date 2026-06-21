@@ -6,9 +6,21 @@ import type { PranchaExtractResult, PranchaLeitura, TokenLog } from '@/hooks/use
 import type { FolhaOrcamento, ItemOrcamento, Categoria, Unidade } from '@/lib/orcamento-construtora/types';
 import { mergeFolhas } from '@/lib/orcamento-construtora/merge-folhas';
 import { AIDebugModal, type AIDebugEntry } from './AIDebugModal';
+import {
+  routeByFilename,
+  GRUPO_LABELS,
+  GRUPO_SECOES,
+  type GrupoEspecialista,
+} from '@/lib/orcamento-construtora/prancha-router';
+import {
+  checklistDoGrupo,
+  XLSX_POR_COD,
+  type XlsxItem,
+} from '@/lib/orcamento-construtora/xlsx-checklist';
 
-// ─── Tipos locais ─────────────────────────────────────────────────────────────
+// ─── Tipos locais ──────────────────────────────────────────────────────────────
 
+/** Backward compat — usado pelo onDone e pela session */
 export interface OrquestradorResult {
   contexto_projeto: string;
   cliente: string;
@@ -16,15 +28,7 @@ export interface OrquestradorResult {
   categorias_cobertas:    string[];
   categorias_ausentes:    string[];
   gaps_globais:           string[];
-  fontes_primarias?:      Record<string, string>;
-  pranchas_para_detalhar: {
-    stem: string;
-    motivo: string;
-    prioridade: number;
-    perguntas: string[];
-    escopo_permitido?: string[];
-    escopo_proibido?:  string[];
-  }[];
+  pranchas_para_detalhar: { stem: string; motivo: string; prioridade: number; perguntas: string[] }[];
   pranchas_dispensadas:   { stem: string; motivo: string }[];
   metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
 }
@@ -39,8 +43,8 @@ export interface BatchRecord {
     enviado_confirmados: number;
     retornado_novos: number;
     retornado_preenchidos: number;
-    descartados_fix2: string[];  // fora do escopo proibido
-    descartados_fix3: string[];  // similar a item PDF
+    descartados_fix2: string[];
+    descartados_fix3: string[];
   };
 }
 
@@ -57,38 +61,23 @@ interface RawIAItem {
   confianca?:  number;
   fonte?:      string;
   status?:     string;
-  r?:          string;   // raciocínio em keywords
+  r?:          string;
   pendencias?: string[];
+  cod?:        string;   // código XLSX (ex: "14.1")
 }
 
-// ─── Helper: deriva ambiente a partir do stem do arquivo ─────────────────────
 
-function stemToAmbiente(stem: string): string {
-  const s = stem.toUpperCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z0-9 _-]/g, ' ');
-
-  if (/PROVAD/.test(s))                               return 'Provadores';
-  if (/SANITARI|BANHEIRO|\bWC\b/.test(s))             return 'Sanitários';
-  if (/\bCOPA\b|CANTINA|COZINHA/.test(s))             return 'Copa';
-  if (/\bDOCA/.test(s))                               return 'Docas';
-  if (/ESCADA/.test(s))                               return 'Escada';
-  if (/REUNIA|REUNI/.test(s))                         return 'Reuniões';
-  if (/FACHADA|VITRIN/.test(s))                       return 'Fachada';
-  if (/DESCOMPRESS|DECOMPRESSAO|DESCANSO/.test(s))    return 'Descompressão';
-  if (/\bADM\b|ADMIN|GERENC/.test(s))                 return 'ADM';
-  if (/ESTOQUE|RESERVA|DEPOSITO/.test(s))             return 'Estoque';
-  if (/VESTIARIO|VESTIARIOS/.test(s))                 return 'Vestiários';
-  if (/\bCIVIL\b/.test(s))                            return 'Loja Geral';
-  if (/AXONOM/.test(s))                               return 'Loja Geral';
-  if (/\bDEC\b|DECOR/.test(s))                        return 'Decoração';
-  if (/\bARQ\b|ARQUIT/.test(s))                       return 'Loja Geral';
-  return 'Geral';
+interface GrupoResult {
+  grupo:    GrupoEspecialista;
+  itens:    RawIAItem[];
+  stems:    string[];
+  erro?:    string;
+  metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
 }
 
-// ─── Helper: mapeia item bruto da IA → ItemOrcamento ─────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-let _idCounter = Date.now(); // module-level seed avoids collisions across re-mounts
+let _idCounter = Date.now();
 
 function mapRawItem(raw: RawIAItem): ItemOrcamento {
   const VALID_CATS = new Set<Categoria>([
@@ -113,10 +102,10 @@ function mapRawItem(raw: RawIAItem): ItemOrcamento {
     pendencias: raw.pendencias ?? [],
     fonte:      (raw.fonte as ItemOrcamento['fonte']) ?? 'IA',
     confianca:  raw.confianca,
-  };
+    raciocinio: raw.r,
+    cod:        raw.cod,
+  } as ItemOrcamento & { cod?: string };
 }
-
-// ─── Helper: comprime imagem para JPEG ───────────────────────────────────────
 
 async function compressImageFile(file: File, maxDim = 2048, quality = 0.85): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -151,109 +140,99 @@ async function compressImageFile(file: File, maxDim = 2048, quality = 0.85): Pro
   });
 }
 
-// ─── Sub-componente: card da leitura de uma prancha ──────────────────────────
-
-function LeituraCard({ leitura }: { leitura: PranchaLeitura }) {
-  const [open, setOpen] = useState(false);
-
-  const coberturaColor = {
-    boa:    'bg-green-100 text-green-700',
-    parcial:'bg-yellow-100 text-yellow-700',
-    minima: 'bg-orange-100 text-orange-700',
-    nenhuma:'bg-red-100 text-red-700',
-  }[leitura.cobertura_codigo] ?? 'bg-gray-100 text-gray-600';
-
-  return (
-    <div className={`rounded-lg border transition-colors ${
-      leitura.relevante ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50'
-    }`}>
-      {/* Header sempre visível */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-gray-50 rounded-lg transition-colors"
-      >
-        <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-1 ${leitura.relevante ? 'bg-green-400' : 'bg-gray-300'}`} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-800">{leitura.ambiente}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${coberturaColor}`}>
-              {leitura.cobertura_codigo}
-            </span>
-            {leitura.tipo && (
-              <span className="text-xs text-gray-400 italic">{leitura.tipo}</span>
-            )}
-          </div>
-          {/* Resumo visível sem precisar abrir */}
-          {leitura.resumo && (
-            <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{leitura.resumo}</p>
-          )}
-        </div>
-        <span className="text-gray-300 text-xs flex-shrink-0 mt-0.5">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {/* Detalhe: itens vistos + observações */}
-      {open && (
-        <div className="px-3 pb-3 flex flex-col gap-2 border-t border-gray-100 pt-2">
-          {leitura.itens_vistos.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {leitura.itens_vistos.map((it, i) => (
-                <span key={i} className="bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-full text-xs">
-                  {it}
-                </span>
-              ))}
-            </div>
-          )}
-          {leitura.observacoes && (
-            <p className="text-xs text-gray-400 italic">{leitura.observacoes}</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
+/** Divide um array em lotes balanceados (distribuição uniforme, não truncagem).
+ *  splitEvenly([1..13], 5) → [[1..5],[6..9],[10..13]]  (5+4+4)
+ *  splitEvenly([1..12], 5) → [[1..4],[5..8],[9..12]]   (4+4+4)
+ *  splitEvenly([1..5],  5) → [[1..5]]                  (sem mudança)
+ */
+function splitEvenly<T>(arr: T[], limit: number): T[][] {
+  if (arr.length === 0) return [[]];
+  const numBatches = Math.ceil(arr.length / limit);
+  const base       = Math.floor(arr.length / numBatches);
+  const remainder  = arr.length % numBatches;
+  const batches: T[][] = [];
+  let i = 0;
+  for (let b = 0; b < numBatches; b++) {
+    const size = base + (b < remainder ? 1 : 0);
+    batches.push(arr.slice(i, i + size));
+    i += size;
+  }
+  return batches;
 }
 
-// ─── Sub-componente: card de um batch de detalhe ─────────────────────────────
+const STATUS_RANK: Record<string, number> = { confirmado: 3, parcial: 2, aguardando: 1 };
 
-function BatchCard({ br, onDebug }: { br: BatchRecord; onDebug?: () => void }) {
+/** Merge de resultados de sub-chamadas do mesmo grupo.
+ *  Para cada cod, mantém o item com maior status; em empate, o maior qty.
+ */
+function mergeSubCallItems(subResults: RawIAItem[][]): RawIAItem[] {
+  const best = new Map<string, RawIAItem>();
+  for (const items of subResults) {
+    for (const item of items) {
+      const key = item.cod ?? item.descricao ?? '';
+      const existing = best.get(key);
+      if (!existing) { best.set(key, item); continue; }
+      const rankNew = STATUS_RANK[item.status ?? '']  ?? 0;
+      const rankOld = STATUS_RANK[existing.status ?? ''] ?? 0;
+      if (
+        rankNew > rankOld ||
+        (rankNew === rankOld && (item.quantidade ?? 0) > (existing.quantidade ?? 0))
+      ) {
+        best.set(key, item);
+      }
+    }
+  }
+  return [...best.values()];
+}
+
+
+// ─── Sub-componente: card de resultado de um grupo ────────────────────────────
+
+function GrupoCard({
+  grupo, label, stems, itens, erro, metadata, onDebug, onRerun,
+}: {
+  grupo:    GrupoEspecialista;
+  label:    string;
+  stems:    string[];
+  itens?:   RawIAItem[];
+  erro?:    string;
+  metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+  onDebug?: () => void;
+  onRerun?: () => void;
+}) {
   const [open, setOpen] = useState(false);
-  const totalItens = Object.values(br.batched ?? {}).reduce((s, arr) => s + arr.length, 0);
-  const s = br.stats;
+  const confirmados = (itens ?? []).filter((it) => it.status === 'confirmado' || (it.quantidade ?? 0) > 0);
+  const aguardando  = (itens ?? []).filter((it) => it.status === 'aguardando' && !(it.quantidade ?? 0));
 
   return (
-    <div className={`border rounded-xl overflow-hidden ${br.erro ? 'border-red-200' : 'border-gray-200'}`}>
+    <div className={`border rounded-xl overflow-hidden ${erro ? 'border-red-800/60' : 'border-zinc-700'}`}>
       <button
-        onClick={() => !br.erro && setOpen((o) => !o)}
+        onClick={() => !erro && setOpen((o) => !o)}
         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-          br.erro ? 'bg-red-50 cursor-default' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'
+          erro ? 'bg-red-950/30 cursor-default' : 'bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer'
         }`}
       >
-        <span className={`font-bold text-sm flex-shrink-0 ${br.erro ? 'text-red-500' : 'text-green-600'}`}>
-          {br.erro ? '✕' : '✓'}
+        <span className={`font-bold text-xs w-6 flex-shrink-0 ${erro ? 'text-red-400' : 'text-indigo-400'}`}>
+          {erro ? '✕' : grupo}
         </span>
         <div className="flex-1 min-w-0 text-left">
-          <span className="text-sm font-semibold text-gray-800">Batch {br.batch}</span>
-          <span className="text-xs text-gray-500 ml-2">{br.stems.map(s => s.split('-').slice(-1)[0]).join(' · ')}</span>
+          <span className="text-sm font-semibold text-zinc-100">{label}</span>
+          <span className="text-xs text-zinc-500 ml-2">{stems.length} pranchas</span>
         </div>
-        {!br.erro && s && (
+        {!erro && itens && (
           <div className="flex items-center gap-2 flex-shrink-0 text-xs">
-            <span className="text-gray-400">{s.enviado_aguardando}↑</span>
-            <span className="text-green-600">{s.retornado_novos + s.retornado_preenchidos}↓</span>
-            {(s.descartados_fix2.length + s.descartados_fix3.length) > 0 && (
-              <span className="text-orange-500">
-                {s.descartados_fix2.length + s.descartados_fix3.length}⚠
-              </span>
+            <span className="text-green-400 font-medium">{confirmados.length} ok</span>
+            {aguardando.length > 0 && (
+              <span className="text-orange-400">{aguardando.length} aguardando</span>
             )}
-            <span className="text-gray-300">{open ? '▲' : '▼'}</span>
+            <span className="text-zinc-600">{open ? '▲' : '▼'}</span>
           </div>
-        )}
-        {!br.erro && !s && (
-          <span className="text-xs text-gray-400 flex-shrink-0">{totalItens} itens {open ? '▲' : '▼'}</span>
         )}
         {onDebug && (
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); onDebug(); }}
-            className="flex-shrink-0 px-2 py-1 text-xs rounded border border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer"
+            className="flex-shrink-0 px-2 py-1 text-xs rounded border border-purple-700/60 bg-purple-900/30 text-purple-300 hover:bg-purple-900/60 transition-colors cursor-pointer"
             title="Ver prompt e output bruto"
           >
             🔍
@@ -261,53 +240,52 @@ function BatchCard({ br, onDebug }: { br: BatchRecord; onDebug?: () => void }) {
         )}
       </button>
 
-      {br.erro && <p className="px-4 py-2 text-xs text-red-600">{br.erro}</p>}
-
-      {open && (
-        <div className="divide-y divide-gray-100">
-          {/* Stats bar */}
-          {s && (
-            <div className="px-4 py-2 bg-gray-50 flex flex-wrap gap-3 text-xs text-gray-500">
-              <span>Enviado: <b className="text-gray-700">{s.enviado_confirmados}</b> PDF + <b className="text-gray-700">{s.enviado_aguardando}</b> aguardando</span>
-              <span>Retornado: <b className="text-green-700">{s.retornado_novos}</b> novos · <b className="text-blue-700">{s.retornado_preenchidos}</b> preenchidos</span>
-              {s.descartados_fix3.length > 0 && (
-                <span className="text-orange-600">Fix-3 (PDF duplicado): {s.descartados_fix3.join(', ')}</span>
-              )}
-              {s.descartados_fix2.length > 0 && (
-                <span className="text-orange-600">Fix-2 (escopo proibido): {s.descartados_fix2.join(', ')}</span>
-              )}
-            </div>
+      {erro && (
+        <div className="px-4 py-2 flex items-center justify-between gap-3">
+          <p className="text-xs text-red-400 flex-1">{erro}</p>
+          {onRerun && (
+            <button
+              onClick={onRerun}
+              className="flex-shrink-0 px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white rounded-lg text-xs font-semibold active:scale-95 transition-all"
+            >
+              ↺ Tentar novamente
+            </button>
           )}
-          {/* Items por prancha */}
-          {br.batched && Object.entries(br.batched).map(([stem, itens]) => (
-            <div key={stem} className="px-4 py-3">
-              <p className="text-xs font-semibold text-gray-600 font-mono mb-2">{stem.split('-').slice(-1)[0]} — {itens.length} itens</p>
-              <div className="flex flex-col gap-1.5">
-                {itens.map((it, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs bg-white border border-gray-100 rounded-lg px-3 py-2">
-                    <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-0.5 ${
-                      it.fonte === 'PDF' ? 'bg-green-400' : 'bg-purple-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium text-gray-800">{it.descricao}</span>
-                      <span className="text-gray-400 ml-1">
-                        · {it.quantidade ?? it.qty ?? '?'} {it.unidade ?? it.unid ?? ''}
-                      </span>
-                      {it.r && (
-                        <span className="ml-1 text-indigo-400 italic">「{it.r}」</span>
-                      )}
-                    </div>
-                    <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${
-                      it.fonte === 'PDF' ? 'bg-green-50 text-green-700' : 'bg-purple-50 text-purple-700'
-                    }`}>{it.fonte ?? 'IA'}</span>
-                    {it.confianca != null && (
-                      <span className="flex-shrink-0 text-gray-300 text-xs">{it.confianca}%</span>
-                    )}
-                  </div>
-                ))}
+        </div>
+      )}
+
+      {open && itens && (
+        <div className="px-4 py-3 flex flex-col gap-1.5 max-h-80 overflow-y-auto">
+          {itens.map((it, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
+              <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-0.5 ${
+                it.fonte === 'PDF' ? 'bg-green-400' : 'bg-purple-400'
+              }`} />
+              <div className="flex-1 min-w-0">
+                {it.cod && (
+                  <span className="font-mono text-zinc-500 text-xs mr-1">[{it.cod}]</span>
+                )}
+                <span className="font-medium text-zinc-100">{it.descricao}</span>
+                <span className="text-zinc-500 ml-1">
+                  · {it.quantidade ?? it.qty ?? '?'} {it.unidade ?? it.unid ?? ''}
+                </span>
+                {it.r && (
+                  <span className="ml-1 text-indigo-400 italic">「{it.r}」</span>
+                )}
               </div>
+              <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${
+                it.status === 'confirmado' ? 'bg-green-900/40 text-green-400' :
+                it.status === 'aguardando' ? 'bg-orange-900/40 text-orange-400' :
+                'bg-purple-900/40 text-purple-400'
+              }`}>{it.status ?? 'parcial'}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {open && metadata && (
+        <div className="px-4 pb-2 text-xs text-zinc-500 border-t border-zinc-700 pt-1.5">
+          {metadata.tokens_input + metadata.tokens_output} tokens · ${metadata.custo_usd.toFixed(4)}
         </div>
       )}
     </div>
@@ -315,6 +293,8 @@ function BatchCard({ br, onDebug }: { br: BatchRecord; onDebug?: () => void }) {
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
+
+const GRUPOS: GrupoEspecialista[] = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6'];
 
 export function StepIA({
   groups,
@@ -336,33 +316,18 @@ export function StepIA({
   onDone: (folha: FolhaOrcamento, orch: OrquestradorResult, leituraMap: PranchaLeitura[], logs: TokenLog[]) => void;
 }) {
   // ── State ──────────────────────────────────────────────────────────────────
-  const [leituraRunning,  setLeituraRunning]  = useState(false);
-  const [leituraProgress, setLeituraProgress] = useState({ done: 0, total: 0 });
-  const [leituraMap,      setLeituraMap]      = useState<PranchaLeitura[]>(existingLeituraMap);
-  const [leituraDone,     setLeituraDone]     = useState(existingLeituraMap.length > 0);
+  const [running,      setRunning]      = useState(false);
+  const [progress,     setProgress]     = useState({ done: 0, total: 0 });
+  const [grupoResults, setGrupoResults] = useState<GrupoResult[]>([]);
+  const [allDone,      setAllDone]      = useState(false);
 
-  const [orchRunning,  setOrchRunning]  = useState(false);
-  const [orchResult,   setOrchResult]   = useState<OrquestradorResult | null>(existingOrchResult);
-
-  const [batchRunning,  setBatchRunning]  = useState(false);
-  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
-  const [batchResults,  setBatchResults]  = useState<BatchRecord[]>(existingBatchResults ?? []);
-  const [batchDone,     setBatchDone]     = useState((existingBatchResults?.length ?? 0) > 0);
-
-  // Restore the pre-review merged folha so "Ver Revisão →" re-appears on back-navigation.
-  const [finalFolha, setFinalFolha] = useState<FolhaOrcamento | null>(existingFinalFolha ?? null);
-
-  // Sync batchResults to session whenever they change (so remount can restore them).
-  useEffect(() => {
-    onBatchResultsChange?.(batchResults);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchResults]);
-  const [tokenLogs,  setTokenLogs]  = useState<TokenLog[]>([]);
-  const [erro,       setErro]       = useState('');
+  const [finalFolha,   setFinalFolha]   = useState<FolhaOrcamento | null>(existingFinalFolha ?? null);
+  const [tokenLogs,    setTokenLogs]    = useState<TokenLog[]>([]);
+  const [erro,         setErro]         = useState('');
   const runRef = useRef(false);
 
-  const [debugEntries,   setDebugEntries]   = useState<AIDebugEntry[]>([]);
-  const [showDebug,      setShowDebug]      = useState(false);
+  const [debugEntries,    setDebugEntries]    = useState<AIDebugEntry[]>([]);
+  const [showDebug,       setShowDebug]       = useState(false);
   const [debugInitialIdx, setDebugInitialIdx] = useState<number | undefined>(undefined);
 
   const openDebug = useCallback((idx?: number) => {
@@ -377,355 +342,332 @@ export function StepIA({
     }]);
   }, []);
 
-  // ── Estágio 1: Leitura Geral ───────────────────────────────────────────────
+  // Sync batch results for session persistence
+  useEffect(() => {
+    if (grupoResults.length === 0) return;
+    // Encode group results into BatchRecord shape for session compat
+    const batchRecords: BatchRecord[] = grupoResults.map((gr, i) => ({
+      batch:    i + 1,
+      stems:    gr.stems,
+      batched:  { [gr.grupo]: gr.itens },
+      erro:     gr.erro,
+    }));
+    onBatchResultsChange?.(batchRecords);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupoResults]);
 
-  const runLeituraGeral = useCallback(async () => {
+  // ── Derived: route stems to groups ────────────────────────────────────────
+  const stems = groups.map((g) => g.stem);
+  const grupoPorStems = routeByFilename(stems);
+
+  // ── Run all 6 specialist groups ───────────────────────────────────────────
+
+  const runEspecialistas = useCallback(async () => {
     if (runRef.current) return;
-    if (extractResults.length === 0) {
-      setErro('Nenhum resultado de extração disponível. Execute o Passo 2 antes.');
+    if (groups.length === 0) {
+      setErro('Nenhuma prancha disponível. Execute o Passo 2 antes.');
       return;
     }
 
     runRef.current = true;
-    setLeituraRunning(true);
-    setLeituraMap([]);
-    setLeituraDone(false);
+    setRunning(true);
+    setGrupoResults([]);
+    setAllDone(false);
+    setFinalFolha(null);
     setErro('');
+    // Calcula total de etapas (soma dos lotes balanceados de cada grupo)
+    const MAX_IMAGES = 5;
+    const totalSteps = GRUPOS.reduce((sum, g) => {
+      const n = (grupoPorStems[g] ?? []).length;
+      return sum + (n === 0 ? 1 : Math.ceil(n / MAX_IMAGES));
+    }, 0);
+    setProgress({ done: 0, total: totalSteps });
 
     try {
-      // Garante que só processa grupos que têm imagem
-      const groupsComImagem = groups.filter((g) => g.imageFile);
-      const BATCH_SIZE = 6;
-      const batches: PranchaGroup[][] = [];
-      for (let i = 0; i < groupsComImagem.length; i += BATCH_SIZE) {
-        batches.push(groupsComImagem.slice(i, i + BATCH_SIZE));
-      }
-      setLeituraProgress({ done: 0, total: batches.length });
+      const allItems: Record<string, RawIAItem[]> = {};
 
-      const allLeituras: PranchaLeitura[] = [];
+      for (const grupo of GRUPOS) {
+        const grupoStems = grupoPorStems[grupo] ?? [];
+        const checklist  = checklistDoGrupo(grupo);
+        const secoes     = GRUPO_SECOES[grupo];
 
-      // Roda até 3 batches em paralelo — speedup ~3× sem estourar rate limit
-      const LEITURA_CONCURRENCY = 3;
-      const leituraTasks = batches.map((batch, bi) => async () => {
-        const fd         = new FormData();
-        const batch_items: object[] = [];
+        // Coleta imagens e tabelas PDF de todas as pranchas do grupo
+        const allImages:    { stem: string; file: File }[] = [];
+        const allPdfTables: { stem: string; itens: object[] }[] = [];
 
-        for (let j = 0; j < batch.length; j++) {
-          const g  = batch[j];
-          const er = extractResults.find((r) => r.stem === g.stem);
-          if (g.imageFile) {
-            const compressed = await compressImageFile(g.imageFile);
-            fd.append(`image_${j}`, compressed, compressed.name);
+        for (const stem of grupoStems) {
+          const g  = groups.find((g) => g.stem === stem);
+          const er = extractResults.find((r) => r.stem === stem);
+          if (g?.imageFile) allImages.push({ stem, file: g.imageFile });
+          if (er?.itens_extraidos?.length) {
+            allPdfTables.push({ stem, itens: er.itens_extraidos });
           }
-          batch_items.push({
-            stem:            g.stem,
-            itens_extraidos: er?.itens_extraidos ?? [],
-            classificacao:   er?.classificacao ?? 'IA_NECESSARIA',
-            height_context:  er?.height_context ?? {},
-          });
         }
-        fd.append('context_json', JSON.stringify({ batch_items }));
 
-        try {
-          const r    = await fetch('/api/orcamento-construtora/ler-prancha', { method: 'POST', body: fd });
-          const data = await r.json() as {
-            leituras?: Record<string, PranchaLeitura>;
-            metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
-            prompt_sent?: string;
-            raw_output?:  string;
-            error?: string;
-          };
-          setDebugEntries((prev) => [...prev, {
-            label:  `Leitura ${bi + 1}/${batches.length}`,
-            prompt: data.prompt_sent ?? '(não disponível)',
-            output: data.raw_output  ?? '(não disponível)',
-          }]);
-          if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-          addLog(`Leitura ${bi + 1}/${batches.length}`, data.metadata ?? {});
-          const novas = Object.values(data.leituras ?? {});
-          allLeituras.push(...novas);
-          setLeituraMap((prev) => [...prev, ...novas]);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          setErro((prev) => (prev ? prev + '\n' : '') + `Leitura batch ${bi + 1}: ${msg}`);
-        } finally {
-          setLeituraProgress((p) => ({ ...p, done: p.done + 1 }));
+        // Divide em lotes balanceados (ex: 13 imagens → 5+4+4)
+        const batches    = splitEvenly(allImages, MAX_IMAGES);
+        const numBatches = batches.length;
+        const subResults: RawIAItem[][] = [];
+        let   mergedMeta = { tokens_input: 0, tokens_output: 0, custo_usd: 0 };
+        let   grupoErro  = '';
+
+        for (let bi = 0; bi < numBatches; bi++) {
+          const batch      = batches[bi];
+          const batchStems = new Set(batch.map((b) => b.stem));
+
+          // Tabelas QNT apenas das pranchas deste lote
+          const batchPdfTables = allPdfTables.filter((t) => batchStems.has(t.stem));
+
+          const fd = new FormData();
+          for (let i = 0; i < batch.length; i++) {
+            const compressed = await compressImageFile(batch[i].file);
+            fd.append(`image_${i}`, compressed, compressed.name);
+          }
+          fd.append('context_json', JSON.stringify({
+            grupo,
+            secoes,
+            sub_chamada: numBatches > 1 ? `${bi + 1}/${numBatches}` : undefined,
+            checklist: checklist.map((it: XlsxItem) => ({
+              cod:             it.cod,
+              descricao:       it.descricao,
+              unidade:         it.unidade,
+              zona:            it.zona,
+              vlrUnit:         it.vlrUnit,
+              materialCliente: it.materialCliente,
+              qdeReferencia:   it.qdeReferencia,
+              zerado:          it.zerado ?? false,
+            })),
+            pdf_tables: batchPdfTables,
+          }));
+
+          const debugLabel = numBatches > 1
+            ? `Especialista ${grupo} (${bi + 1}/${numBatches}) — ${GRUPO_LABELS[grupo]}`
+            : `Especialista ${grupo} — ${GRUPO_LABELS[grupo]}`;
+
+          try {
+            const r = await fetch('/api/orcamento-construtora/especialista', {
+              method: 'POST',
+              body: fd,
+            });
+            const data = await r.json() as {
+              itens?: RawIAItem[];
+              metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+              prompt_sent?: string;
+              raw_output?: string;
+              error?: string;
+            };
+
+            setDebugEntries((prev) => [...prev, {
+              label:  debugLabel,
+              prompt: data.prompt_sent ?? '(não disponível)',
+              output: data.raw_output  ?? '(não disponível)',
+            }]);
+
+            if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+
+            if (data.metadata) {
+              mergedMeta.tokens_input  += data.metadata.tokens_input;
+              mergedMeta.tokens_output += data.metadata.tokens_output;
+              mergedMeta.custo_usd     += data.metadata.custo_usd;
+            }
+            addLog(debugLabel, data.metadata ?? {});
+            subResults.push(data.itens ?? []);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            grupoErro = (grupoErro ? grupoErro + '\n' : '') + `${debugLabel}: ${msg}`;
+            setErro((prev) => (prev ? prev + '\n' : '') + `${debugLabel}: ${msg}`);
+            subResults.push([]);
+          }
+
+          setProgress((p) => ({ ...p, done: p.done + 1 }));
         }
-      });
 
-      const leituraQueue = [...leituraTasks];
-      await Promise.all(
-        Array.from({ length: Math.min(LEITURA_CONCURRENCY, leituraTasks.length) }, async () => {
-          while (leituraQueue.length > 0) await leituraQueue.shift()!();
-        }),
-      );
+        // Merge dos resultados de todos os lotes por prioridade de status
+        const itens = mergeSubCallItems(subResults);
+        allItems[grupo] = itens;
 
-      setLeituraDone(true);
-      console.log('[StepIA] Leitura Geral concluída:', allLeituras.length, 'pranchas lidas');
-    } finally {
-      setLeituraRunning(false);
-      runRef.current = false;
-    }
-  }, [extractResults, groups, addLog]);
+        const grupoResult: GrupoResult = grupoErro && itens.length === 0
+          ? { grupo, itens: [], stems: grupoStems, erro: grupoErro }
+          : { grupo, itens, stems: grupoStems, metadata: mergedMeta };
 
-  // ── Estágio 2: Orquestrador ────────────────────────────────────────────────
+        setGrupoResults((prev) => [...prev, grupoResult]);
+      }
 
-  const runOrchestrator = useCallback(async () => {
-    if (runRef.current || !leituraDone) return;
-    runRef.current = true;
-    setOrchRunning(true);
-    setOrchResult(null);
-    setErro('');
+      // ── Montar FolhaOrcamento a partir dos resultados dos grupos ──────────
+      // Todos os itens do checklist respondidos pelos especialistas, desduplicados
+      const seenCods  = new Set<string>();
+      const allMapped: ItemOrcamento[] = [];
 
-    const extract_summary = extractResults.map((r) => {
-      const itens = r.itens_extraidos ?? [];
-      const confirmados = itens.filter((it) => it.status !== 'aguardando' && (it.quantidade ?? 0) > 0);
-      const aguardando  = itens.filter((it) => it.status === 'aguardando' || (it.quantidade ?? 0) === 0);
-      return {
-        stem:                  r.stem,
-        classificacao:         r.classificacao,
-        score:                 (r.debug as Record<string, unknown>)?.score ?? 0,
-        n_confirmados:         confirmados.length,
-        n_aguardando:          aguardando.length,
-        height_context:        r.height_context ?? {},
-        descricoes_aguardando: aguardando.slice(0, 6).map((it) => it.descricao ?? '').filter(Boolean),
-      };
-    });
+      for (const grupo of GRUPOS) {
+        for (const raw of (allItems[grupo] ?? [])) {
+          const cod = raw.cod;
+          if (cod && seenCods.has(cod)) continue; // dedup por cod XLSX
+          if (cod) seenCods.add(cod);
+          // Enrich with XLSX data
+          const xlsxItem = cod ? XLSX_POR_COD[cod] : undefined;
+          allMapped.push(mapRawItem({
+            ...raw,
+            categoria: raw.categoria ?? xlsxItem?.secao as unknown as string ?? 'outro',
+          }));
+        }
+      }
 
-    const fd = new FormData();
-    fd.append('context_json', JSON.stringify({
-      leitura_map:     leituraMap,
-      extract_summary,
-    }));
-
-    try {
-      const r    = await fetch('/api/orcamento-construtora/orquestrar', { method: 'POST', body: fd });
-      const data = await r.json() as OrquestradorResult & {
-        prompt_sent?: string;
-        raw_output?:  string;
-        error?: string;
-      };
-      setDebugEntries((prev) => [...prev, {
-        label:  'Orquestrador',
-        prompt: data.prompt_sent ?? '(não disponível)',
-        output: data.raw_output  ?? '(não disponível)',
+      const folha: FolhaOrcamento = mergeFolhas([{
+        projeto: 'fit-out',
+        cliente: 'C&A',
+        itens:   allMapped,
       }]);
-      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-      addLog('Orquestrador', data.metadata ?? {});
-      setOrchResult(data);
-    } catch (e) {
-      setErro(`Orquestrador: ${e instanceof Error ? e.message : e}`);
+      setFinalFolha(folha);
+      setAllDone(true);
     } finally {
-      setOrchRunning(false);
+      setRunning(false);
       runRef.current = false;
     }
-  }, [leituraDone, leituraMap, extractResults, addLog]);
+  }, [groups, extractResults, grupoPorStems, addLog]);
 
-  // ── Estágio 3: Batches de Detalhe ─────────────────────────────────────────
+  // ── Re-run a single failed grupo ─────────────────────────────────────────
 
-  const runBatches = useCallback(async () => {
-    if (runRef.current || !orchResult) return;
+  const runSingleGrupo = useCallback(async (grupo: GrupoEspecialista) => {
+    if (runRef.current) return;
     runRef.current = true;
-    setBatchRunning(true);
     setErro('');
-    setBatchResults([]);
 
-    try {
-    const stemsParaDetalhar = orchResult.pranchas_para_detalhar.map((p) => p.stem);
+    const grupoStems = grupoPorStems[grupo] ?? [];
+    const checklist  = checklistDoGrupo(grupo);
+    const secoes     = GRUPO_SECOES[grupo];
+    const MAX_IMAGES = 5;
 
-    const BATCH_SIZE = 3;
-    const batches: string[][] = [];
-    for (let i = 0; i < stemsParaDetalhar.length; i += BATCH_SIZE) {
-      batches.push(stemsParaDetalhar.slice(i, i + BATCH_SIZE));
+    const allImages:    { stem: string; file: File }[] = [];
+    const allPdfTables: { stem: string; itens: object[] }[] = [];
+
+    for (const stem of grupoStems) {
+      const g  = groups.find((g) => g.stem === stem);
+      const er = extractResults.find((r) => r.stem === stem);
+      if (g?.imageFile) allImages.push({ stem, file: g.imageFile });
+      if (er?.itens_extraidos?.length) allPdfTables.push({ stem, itens: er.itens_extraidos });
     }
-    setBatchProgress({ done: 0, total: batches.length });
 
-    const allBatchedRaw: Record<string, RawIAItem[]> = {};
+    const batches    = splitEvenly(allImages, MAX_IMAGES);
+    const numBatches = batches.length;
+    const subResults: RawIAItem[][] = [];
+    let   mergedMeta = { tokens_input: 0, tokens_output: 0, custo_usd: 0 };
+    let   grupoErro  = '';
 
-    // Roda até 3 batches em paralelo — speedup ~3× sem estourar rate limit
-    const BATCH_CONCURRENCY = 3;
-    const batchTasks = batches.map((batchStems, bi) => async () => {
-      const fd         = new FormData();
-      const batch_items: object[] = [];
+    for (let bi = 0; bi < numBatches; bi++) {
+      const batch      = batches[bi];
+      const batchStems = new Set(batch.map((b) => b.stem));
+      const batchPdfTables = allPdfTables.filter((t) => batchStems.has(t.stem));
 
-      for (let j = 0; j < batchStems.length; j++) {
-        const stem = batchStems[j];
-        const g    = groups.find((g) => g.stem === stem);
-        const er   = extractResults.find((r) => r.stem === stem);
-        const orch = orchResult.pranchas_para_detalhar.find((p) => p.stem === stem);
-        const leit = leituraMap.find((l) => l.stem === stem);
-
-        if (g?.imageFile) {
-          const compressed = await compressImageFile(g.imageFile);
-          fd.append(`image_${j}`, compressed, compressed.name);
-        }
-        // Envia pdf_clean_lines quando a extração por código foi fraca (< 5 confirmados).
-        // O Claude usa o texto como canal complementar à imagem para ler tabelas
-        // (Quadro de Áreas, Quadro de Luminárias, etc.) que ficam ilegíveis após compressão JPEG.
-        const nConfirmados = (er?.itens_extraidos ?? []).filter(
-          (it) => (it as Record<string, unknown>).status !== 'aguardando' && ((it as Record<string, unknown>).quantidade as number ?? 0) > 0
-        ).length;
-        const dbg = er?.debug as Record<string, unknown> | undefined;
-        const rawCleanLines = dbg?.pdf_clean_lines as string[] | undefined;
-        const pdfCleanLines = nConfirmados < 5 && rawCleanLines?.length
-          ? rawCleanLines.slice(0, 200)   // teto de 200 linhas ≈ 3k-5k tokens
-          : undefined;
-
-        batch_items.push({
-          stem,
-          itens_extraidos:  er?.itens_extraidos ?? [],
-          classificacao:    er?.classificacao ?? 'IA_NECESSARIA',
-          height_context:   er?.height_context ?? {},
-          resumo_leitura:   leit?.resumo ?? '',
-          perguntas:        orch?.perguntas ?? [],
-          escopo_permitido: orch?.escopo_permitido ?? [],
-          escopo_proibido:  orch?.escopo_proibido ?? [],
-          ...(pdfCleanLines ? { pdf_clean_lines: pdfCleanLines } : {}),
-        });
+      const fd = new FormData();
+      for (let i = 0; i < batch.length; i++) {
+        const compressed = await compressImageFile(batch[i].file);
+        fd.append(`image_${i}`, compressed, compressed.name);
       }
       fd.append('context_json', JSON.stringify({
-        contexto_projeto: orchResult.contexto_projeto,
-        batch_items,
+        grupo, secoes,
+        sub_chamada: numBatches > 1 ? `${bi + 1}/${numBatches}` : undefined,
+        checklist: checklist.map((it: XlsxItem) => ({
+          cod: it.cod, descricao: it.descricao, unidade: it.unidade,
+          zona: it.zona, vlrUnit: it.vlrUnit, materialCliente: it.materialCliente,
+          qdeReferencia: it.qdeReferencia, zerado: it.zerado ?? false,
+        })),
+        pdf_tables: batchPdfTables,
       }));
 
+      const debugLabel = numBatches > 1
+        ? `Especialista ${grupo} (${bi + 1}/${numBatches}) — ${GRUPO_LABELS[grupo]}`
+        : `Especialista ${grupo} — ${GRUPO_LABELS[grupo]}`;
+
       try {
-        const r    = await fetch('/api/orcamento-construtora/analisar-batch', { method: 'POST', body: fd });
+        const r = await fetch('/api/orcamento-construtora/especialista', { method: 'POST', body: fd });
         const data = await r.json() as {
-          batched?: Record<string, RawIAItem[]>;
+          itens?: RawIAItem[];
           metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
-          prompt_sent?: string;
-          raw_output?:  string;
-          error?: string;
+          prompt_sent?: string; raw_output?: string; error?: string;
         };
         setDebugEntries((prev) => [...prev, {
-          label:  `Detalhe batch ${bi + 1}/${batches.length}`,
+          label: debugLabel,
           prompt: data.prompt_sent ?? '(não disponível)',
           output: data.raw_output  ?? '(não disponível)',
         }]);
         if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-        addLog(`Detalhe ${bi + 1}/${batches.length}`, data.metadata ?? {});
-        Object.assign(allBatchedRaw, data.batched ?? {});
-
-        // ── Calcula stats de debug ────────────────────────────────────────────
-        const pdfKeys = new Set(
-          batch_items.flatMap((bi_item) =>
-            (bi_item.itens_extraidos as RawIAItem[])
-              .filter((it) => it.fonte === 'PDF' && it.descricao)
-              .map((it) => it.descricao!.toLowerCase().slice(0, 30))
-          )
-        );
-        const escProibidos = batch_items.flatMap((bi_item) =>
-          (bi_item.escopo_proibido as string[] | undefined) ?? []
-        );
-
-        let retNovos = 0, retPreenchidos = 0;
-        const fix2: string[] = [], fix3: string[] = [];
-
-        for (const itens of Object.values(data.batched ?? {})) {
-          for (const it of itens as RawIAItem[]) {
-            const descKey = (it.descricao ?? '').toLowerCase().slice(0, 30);
-            const isSimilarToPDF = [...pdfKeys].some(
-              (k) => k.length > 8 && descKey.includes(k.slice(0, 15))
-            );
-            const isOutsideScope = escProibidos.some(
-              (ep) => (it.descricao ?? '').toLowerCase().includes(ep.toLowerCase().slice(0, 15))
-            );
-            if (isSimilarToPDF && it.fonte !== 'PDF') fix3.push(it.descricao?.slice(0, 25) ?? '');
-            else if (isOutsideScope) fix2.push(it.descricao?.slice(0, 25) ?? '');
-            else if ((it.quantidade ?? it.qty ?? 0) > 0) retPreenchidos++;
-            else retNovos++;
-          }
+        if (data.metadata) {
+          mergedMeta.tokens_input  += data.metadata.tokens_input;
+          mergedMeta.tokens_output += data.metadata.tokens_output;
+          mergedMeta.custo_usd     += data.metadata.custo_usd;
         }
-
-        const enviado_aguardando = batch_items.reduce(
-          (s, bi_item) => s + (bi_item.itens_extraidos as RawIAItem[]).filter((it) => it.status === 'aguardando' || !(it.quantidade ?? 0)).length, 0
-        );
-        const enviado_confirmados = batch_items.reduce(
-          (s, bi_item) => s + (bi_item.itens_extraidos as RawIAItem[]).filter((it) => it.fonte === 'PDF' && (it.quantidade ?? 0) > 0).length, 0
-        );
-
-        setBatchResults((prev) => [...prev, {
-          batch: bi + 1, stems: batchStems, batched: data.batched,
-          stats: { enviado_aguardando, enviado_confirmados, retornado_novos: retNovos, retornado_preenchidos: retPreenchidos, descartados_fix2: fix2, descartados_fix3: fix3 },
-        }]);
+        addLog(debugLabel, data.metadata ?? {});
+        subResults.push(data.itens ?? []);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        setErro((prev) => (prev ? prev + '\n' : '') + `Batch ${bi + 1}: ${msg}`);
-        setBatchResults((prev) => [...prev, { batch: bi + 1, stems: batchStems, erro: msg }]);
-      } finally {
-        setBatchProgress((p) => ({ ...p, done: p.done + 1 }));
+        grupoErro = (grupoErro ? grupoErro + '\n' : '') + `${debugLabel}: ${msg}`;
+        setErro(msg);
+        subResults.push([]);
       }
+    }
+
+    const itens = mergeSubCallItems(subResults);
+    const newGrupoResult: GrupoResult = grupoErro && itens.length === 0
+      ? { grupo, itens: [], stems: grupoStems, erro: grupoErro }
+      : { grupo, itens, stems: grupoStems, metadata: mergedMeta };
+
+    // Replace this grupo's result and rebuild the folha
+    setGrupoResults((prev) => {
+      const updated = prev.map((gr) => gr.grupo === grupo ? newGrupoResult : gr);
+
+      // Rebuild FolhaOrcamento from all updated results
+      const seenCods  = new Set<string>();
+      const allMapped: ItemOrcamento[] = [];
+      for (const g of GRUPOS) {
+        const gr = updated.find((r) => r.grupo === g);
+        for (const raw of (gr?.itens ?? [])) {
+          const cod = raw.cod;
+          if (cod && seenCods.has(cod)) continue;
+          if (cod) seenCods.add(cod);
+          const xlsxItem = cod ? XLSX_POR_COD[cod] : undefined;
+          allMapped.push(mapRawItem({
+            ...raw,
+            categoria: raw.categoria ?? xlsxItem?.secao as unknown as string ?? 'outro',
+          }));
+        }
+      }
+      const folha = mergeFolhas([{ projeto: 'fit-out', cliente: 'C&A', itens: allMapped }]);
+      setFinalFolha(folha);
+
+      return updated;
     });
 
-    const batchQueue = [...batchTasks];
-    await Promise.all(
-      Array.from({ length: Math.min(BATCH_CONCURRENCY, batchTasks.length) }, async () => {
-        while (batchQueue.length > 0) await batchQueue.shift()!();
-      }),
-    );
+    runRef.current = false;
+  }, [groups, extractResults, grupoPorStems, addLog]);
 
-    // ── Normaliza chave para deduplicação ──────────────────────────────────
-    function normKey(desc: string): string {
-      return desc
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 45);
-    }
+  // ── Proceed to review ─────────────────────────────────────────────────────
 
-    // Padrão para itens de ÁREA DE REFERÊNCIA que não devem ser precificados.
-    // ABL, SV, AVL, ADM etc. são dados de contexto espacial (m² por setor),
-    // não materiais para comprar.
-    const AREA_REF = /^(ABL\s|SV\s|AVL\s|ÁREA\s+DE\s+PROVADORES|RESERVA\/ESTOQUE|ÁREA\s+CAIXA|ÁREA\s+TÉCNICA|CIRC[\.\s])/i;
-    function isRefArea(it: RawIAItem): boolean {
-      return AREA_REF.test(it.descricao ?? '') && (it.unidade === 'm2' || it.unidade === 'm²' || it.unidade === 'm');
-    }
-
-    // ── Monta FolhaOrcamento: código + IA de detalhe ───────────────────────
-    const folhasPorPrancha: FolhaOrcamento[] = extractResults.map((er) => {
-      const ambiente = stemToAmbiente(er.stem);
-
-      const iaRaw   = (allBatchedRaw[er.stem] ?? []).filter((it) => !isRefArea(it));
-      const iaItens = iaRaw.map((it) => mapRawItem({
-        ...it,
-        ambiente: (it.ambiente && it.ambiente !== 'Geral') ? it.ambiente : ambiente,
-      }));
-
-      const codeRaw   = ((er.itens_extraidos ?? []) as RawIAItem[]).filter((it) => !isRefArea(it));
-      const codeItens: ItemOrcamento[] = codeRaw.map((it) => mapRawItem({
-        ...it,
-        fonte:    it.fonte ?? 'PDF',
-        ambiente: (it.ambiente && it.ambiente !== 'Geral') ? it.ambiente : ambiente,
-      }));
-
-      const seen  = new Set(codeItens.map((c) => normKey(c.descricao)));
-      const extra = iaItens.filter((it) => !seen.has(normKey(it.descricao)));
-
-      return {
-        projeto: orchResult.projeto,
-        cliente: orchResult.cliente,
-        itens:   [...codeItens, ...extra],
-      };
-    });
-
-    const folha = mergeFolhas(folhasPorPrancha.filter((f) => f.itens.length > 0));
-    setFinalFolha(folha);
-    setBatchDone(true);
-    } finally {
-      setBatchRunning(false);
-      runRef.current = false;
-    }
-  }, [orchResult, groups, extractResults, leituraMap, addLog]);
+  const handleDone = useCallback(() => {
+    if (!finalFolha) return;
+    const orchCompat: OrquestradorResult = {
+      contexto_projeto:       'Projeto analisado por 6 especialistas de IA.',
+      cliente:                'C&A',
+      projeto:                'fit-out',
+      categorias_cobertas:    GRUPOS.map((g) => GRUPO_LABELS[g]),
+      categorias_ausentes:    [],
+      gaps_globais:           [],
+      pranchas_para_detalhar: [],
+      pranchas_dispensadas:   [],
+    };
+    onDone(finalFolha, orchCompat, [] as PranchaLeitura[], tokenLogs);
+  }, [finalFolha, tokenLogs, onDone]);
 
   // ── Stats ──────────────────────────────────────────────────────────────────
-  const nParaDetalhar = orchResult?.pranchas_para_detalhar?.length ?? 0;
-  const nBatches      = Math.ceil(nParaDetalhar / 3) || 0;
-  const totalTokens   = tokenLogs.reduce((s, l) => s + l.usage.input_tokens + l.usage.output_tokens, 0);
-  const totalCusto    = tokenLogs.reduce(
+  const totalTokens = tokenLogs.reduce((s, l) => s + l.usage.input_tokens + l.usage.output_tokens, 0);
+  const totalCusto  = tokenLogs.reduce(
     (s, l) => s + l.usage.input_tokens * 3 / 1_000_000 + l.usage.output_tokens * 15 / 1_000_000, 0,
   );
+
+  const totalItems   = grupoResults.reduce((s, gr) => s + gr.itens.length, 0);
+  const totalOk      = grupoResults.reduce(
+    (s, gr) => s + gr.itens.filter((it) => it.status === 'confirmado' || (it.quantidade ?? 0) > 0).length, 0
+  );
+  const totalAguard  = totalItems - totalOk;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -739,321 +681,145 @@ export function StepIA({
         />
       )}
 
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-gray-800">Passo 3 — Análise com IA</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Três estágios sequenciais: leitura completa do projeto → orquestração de gaps → análise de detalhe.
+          <h2 className="text-xl font-semibold text-white">Passo 3 — Análise com IA</h2>
+          <p className="text-sm text-zinc-500 mt-1">
+            6 especialistas com checklist do XLSX. Itens não encontrados ficam aguardando revisão.
           </p>
         </div>
         {debugEntries.length > 0 && (
           <button
             onClick={() => openDebug()}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-purple-700/60 bg-purple-900/30 text-purple-300 hover:bg-purple-900/60 transition-colors"
           >
             <span>🔍</span>
             Debug IA
-            <span className="ml-1 px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded-full text-xs font-bold">
+            <span className="ml-1 px-1.5 py-0.5 bg-purple-800 text-purple-200 rounded-full text-xs font-bold">
               {debugEntries.length}
             </span>
           </button>
         )}
       </div>
 
-      {/* ─── Estágio 1: Leitura Geral ───────────────────────────────────────── */}
-      <div className={`border rounded-xl overflow-hidden ${
-        leituraDone ? 'border-green-200' : leituraRunning ? 'border-blue-200' : 'border-gray-200'
-      }`}>
-        <div className={`px-4 py-3 flex items-center gap-3 ${
-          leituraDone ? 'bg-green-50' : leituraRunning ? 'bg-blue-50' : 'bg-gray-50'
-        }`}>
-          {leituraDone
-            ? <span className="text-green-600 font-bold text-sm flex-shrink-0">✓</span>
-            : leituraRunning
-            ? <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            : <span className="w-5 h-5 rounded-full border-2 border-gray-300 inline-flex items-center justify-center text-xs text-gray-400 flex-shrink-0">1</span>
-          }
+      {/* ─── Roteamento (sempre visível, sem chamada de API) ─────────────────── */}
+      <div className="border border-zinc-700 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-zinc-800/60 flex items-center gap-3">
+          <span className="w-5 h-5 rounded-full border-2 border-zinc-600 inline-flex items-center justify-center text-xs text-zinc-400 flex-shrink-0">0</span>
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${leituraDone ? 'text-green-800' : leituraRunning ? 'text-blue-800' : 'text-gray-700'}`}>
-              Estágio 1 — Leitura Geral do Projeto
-            </p>
-            <p className={`text-xs mt-0.5 ${extractResults.length === 0 && !leituraDone ? 'text-red-500' : 'text-gray-500'}`}>
-              {leituraRunning
-                ? `Lendo batch ${leituraProgress.done + 1}/${leituraProgress.total}… (todas as pranchas, sem pressão de qty)`
-                : leituraDone
-                ? `${leituraMap.length} pranchas lidas · ${leituraMap.filter((l) => l.relevante).length} relevantes`
-                : extractResults.length === 0
-                ? '⚠ Execute o Passo 2 primeiro'
-                : `Envia todas as ${groups.filter((g) => g.imageFile).length} pranchas em batches de 6 para a IA documentar o projeto`}
+            <p className="text-sm font-semibold text-zinc-200">Roteamento de Pranchas</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {stems.length} pranchas roteadas para 6 grupos por nome de arquivo (0 chamadas de IA)
             </p>
           </div>
-          {!leituraDone && !leituraRunning && (
+        </div>
+        <div className="px-4 py-3 grid grid-cols-2 gap-2 bg-zinc-900/50">
+          {GRUPOS.map((grupo) => {
+            const stemsG = grupoPorStems[grupo] ?? [];
+            return (
+              <div key={grupo} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-xs">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="font-mono font-bold text-indigo-400">{grupo}</span>
+                  <span className="text-zinc-400">{GRUPO_LABELS[grupo]}</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {stemsG.length > 0
+                    ? stemsG.map((s) => (
+                        <span key={s} className="text-zinc-400 font-mono truncate">
+                          {s.split('-').slice(-1)[0]}
+                        </span>
+                      ))
+                    : <span className="text-zinc-600 italic">nenhuma</span>
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Especialistas + Auditoria ────────────────────────────────────────── */}
+      <div className={`border rounded-xl overflow-hidden ${
+        allDone ? 'border-green-700/60' : running ? 'border-blue-700/60' : 'border-zinc-700'
+      }`}>
+        <div className={`px-4 py-3 flex items-center gap-3 ${
+          allDone ? 'bg-green-950/40' : running ? 'bg-blue-950/40' : 'bg-zinc-800/60'
+        }`}>
+          {allDone
+            ? <span className="text-green-400 font-bold text-sm flex-shrink-0">✓</span>
+            : running
+            ? <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            : <span className="w-5 h-5 rounded-full border-2 border-zinc-600 inline-flex items-center justify-center text-xs text-zinc-400 flex-shrink-0">1</span>
+          }
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${allDone ? 'text-green-300' : running ? 'text-blue-300' : 'text-zinc-200'}`}>
+              Análise por Especialistas (G1–G6)
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {running
+                ? `Especialista ${progress.done + 1}/${progress.total} em andamento…`
+                : allDone
+                ? `${totalItems} itens · ${totalOk} confirmados · ${totalAguard} aguardando`
+                : `6 chamadas de IA com checklist XLSX + tabelas QNT extraídas do PDF`}
+            </p>
+          </div>
+          {!allDone && !running && (
             <button
-              onClick={runLeituraGeral}
-              disabled={extractResults.length === 0}
+              onClick={runEspecialistas}
+              disabled={groups.length === 0}
               className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Ler Projeto →
+              Analisar →
             </button>
           )}
-        </div>
-
-        {/* Barra de progresso */}
-        {leituraRunning && leituraProgress.total > 0 && (
-          <div className="px-4 pt-3">
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-300"
-                style={{ width: `${(leituraProgress.done / leituraProgress.total) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">{leituraProgress.done}/{leituraProgress.total} batches concluídos</p>
-          </div>
-        )}
-
-        {/* Resultado da leitura */}
-        {leituraDone && leituraMap.length > 0 && (() => {
-          const relevantes  = leituraMap.filter((l) => l.relevante);
-          const dispensadas = leituraMap.filter((l) => !l.relevante);
-          return (
-            <div className="px-4 py-3 border-t border-green-100 flex flex-col gap-3">
-              {/* Relevantes */}
-              {relevantes.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-1.5 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                    {relevantes.length} relevantes para o orçamento
-                  </p>
-                  <div className="flex flex-col gap-1.5 max-h-96 overflow-y-auto pr-1">
-                    {relevantes.map((l) => (
-                      <LeituraCard key={l.stem} leitura={l} />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Sem dados úteis */}
-              {dispensadas.length > 0 && (
-                <details className="group">
-                  <summary className="text-xs text-gray-400 cursor-pointer flex items-center gap-1.5 select-none list-none">
-                    <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />
-                    {dispensadas.length} sem dados úteis
-                    <span className="group-open:hidden">▼</span>
-                    <span className="hidden group-open:inline">▲</span>
-                  </summary>
-                  <div className="flex flex-col gap-1.5 mt-1.5">
-                    {dispensadas.map((l) => (
-                      <LeituraCard key={l.stem} leitura={l} />
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* ─── Estágio 2: Orquestrador ────────────────────────────────────────── */}
-      <div className={`border rounded-xl overflow-hidden ${
-        orchResult ? 'border-green-200' : orchRunning ? 'border-blue-200' : 'border-gray-200'
-      }`}>
-        <div className={`px-4 py-3 flex items-center gap-3 ${
-          orchResult ? 'bg-green-50' : orchRunning ? 'bg-blue-50' : 'bg-gray-50'
-        }`}>
-          {orchResult
-            ? <span className="text-green-600 font-bold text-sm flex-shrink-0">✓</span>
-            : orchRunning
-            ? <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            : <span className="w-5 h-5 rounded-full border-2 border-gray-300 inline-flex items-center justify-center text-xs text-gray-400 flex-shrink-0">2</span>
-          }
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${orchResult ? 'text-green-800' : orchRunning ? 'text-blue-800' : 'text-gray-500'}`}>
-              Estágio 2 — Orquestrador de Gaps
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {orchRunning
-                ? 'Analisando leitura + dados de código (sem imagens)…'
-                : orchResult
-                ? `${nParaDetalhar} pranchas para detalhar · ${orchResult.categorias_ausentes?.length ?? 0} categorias em falta`
-                : leituraDone
-                ? 'Pronto para identificar gaps e decidir o que precisa de análise de detalhe'
-                : 'Aguardando Estágio 1'}
-            </p>
-          </div>
-          {orchResult && (() => {
-            const idx = debugEntries.findIndex((e) => e.label === 'Orquestrador');
-            return idx >= 0 ? (
-              <button
-                onClick={() => openDebug(idx)}
-                className="flex-shrink-0 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors"
-                title="Ver prompt e output bruto"
-              >
-                🔍
-              </button>
-            ) : null;
-          })()}
-          {leituraDone && !orchResult && !orchRunning && (
-            <button
-              onClick={runOrchestrator}
-              className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 active:scale-95 transition-all"
-            >
-              Orquestrar →
-            </button>
-          )}
-        </div>
-
-        {orchResult && (
-          <div className="px-4 py-4 border-t border-green-100 flex flex-col gap-3">
-            {/* Contexto */}
-            <div className="bg-white border border-gray-100 rounded-lg px-4 py-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Contexto do Projeto</p>
-              <p className="text-sm text-gray-800 italic">"{orchResult.contexto_projeto}"</p>
-              <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                <span>Cliente: <strong className="text-gray-700">{orchResult.cliente}</strong></span>
-                <span>Projeto: <strong className="text-gray-700">{orchResult.projeto}</strong></span>
-              </div>
-            </div>
-
-            {/* Categorias */}
-            <div className="flex gap-3 flex-wrap">
-              {orchResult.categorias_cobertas?.map((c) => (
-                <span key={c} className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
-                  ✓ {c}
-                </span>
-              ))}
-              {orchResult.categorias_ausentes?.map((c) => (
-                <span key={c} className="text-xs bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full">
-                  ✕ {c}
-                </span>
-              ))}
-            </div>
-
-            {/* Gaps globais */}
-            {orchResult.gaps_globais?.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Gaps Identificados</p>
-                <div className="flex flex-col gap-1">
-                  {orchResult.gaps_globais.map((g, i) => (
-                    <p key={i} className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded px-2 py-1">{g}</p>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Pranchas para detalhar */}
-            {orchResult.pranchas_para_detalhar?.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                  Para análise de detalhe ({orchResult.pranchas_para_detalhar.length})
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {orchResult.pranchas_para_detalhar.map((p) => (
-                    <div key={p.stem} className="flex items-start gap-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 text-xs">
-                      <span className="font-mono font-semibold text-orange-800 flex-shrink-0">{p.stem}</span>
-                      <span className="text-orange-600 flex-1">— {p.motivo}</span>
-                      <span className="ml-auto text-orange-400 flex-shrink-0">P{p.prioridade}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Dispensadas */}
-            {orchResult.pranchas_dispensadas?.length > 0 && (
-              <details>
-                <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">
-                  {orchResult.pranchas_dispensadas.length} dispensadas ▾
-                </summary>
-                <div className="mt-2 flex flex-col gap-1">
-                  {orchResult.pranchas_dispensadas.map((p) => (
-                    <div key={p.stem} className="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-1.5 text-xs">
-                      <span className="font-mono text-gray-500 flex-shrink-0">{p.stem}</span>
-                      <span className="text-gray-400">— {p.motivo}</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ─── Estágio 3: Batches de Detalhe ──────────────────────────────────── */}
-      <div className={`border rounded-xl overflow-hidden ${
-        batchDone ? 'border-green-200' : batchRunning ? 'border-blue-200' : 'border-gray-200'
-      }`}>
-        <div className={`px-4 py-3 flex items-center gap-3 ${
-          batchDone ? 'bg-green-50' : batchRunning ? 'bg-blue-50' : 'bg-gray-50'
-        }`}>
-          {batchDone
-            ? <span className="text-green-600 font-bold text-sm flex-shrink-0">✓</span>
-            : batchRunning
-            ? <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            : <span className="w-5 h-5 rounded-full border-2 border-gray-300 inline-flex items-center justify-center text-xs text-gray-400 flex-shrink-0">3</span>
-          }
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm font-semibold ${batchDone ? 'text-green-800' : batchRunning ? 'text-blue-800' : 'text-gray-500'}`}>
-              Estágio 3 — Análise de Detalhe
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {batchRunning
-                ? `Batch ${batchProgress.done + 1}/${batchProgress.total} em andamento…`
-                : batchDone
-                ? `${batchProgress.total} batch${batchProgress.total !== 1 ? 'es' : ''} concluídos`
-                : orchResult
-                ? `${nParaDetalhar} pranchas → ${nBatches} batch${nBatches !== 1 ? 'es' : ''} com contexto rico + perguntas específicas`
-                : 'Aguardando Estágio 2'}
-            </p>
-          </div>
-          {orchResult && !batchRunning && !batchDone && (
-            <button
-              onClick={runBatches}
-              className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 active:scale-95 transition-all"
-            >
-              Detalhar ({nParaDetalhar}) →
-            </button>
-          )}
-          {orchResult && !batchRunning && batchDone && (
+          {allDone && !running && (
             <button
               onClick={() => {
-                setBatchResults([]);
-                setBatchDone(false);
+                setGrupoResults([]);
+                setAllDone(false);
                 setFinalFolha(null);
                 setErro('');
-                runBatches();
+                runEspecialistas();
               }}
-              className="flex-shrink-0 px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50 active:scale-95 transition-all"
-              title="Re-executar todos os batches do Estágio 3"
+              className="flex-shrink-0 px-3 py-1.5 border border-zinc-600 text-zinc-300 rounded-lg text-xs font-medium hover:bg-zinc-700 transition-all"
             >
               ↺ Re-executar
             </button>
           )}
-          {batchRunning && (
-            <span className="text-xs text-blue-500 animate-pulse flex-shrink-0">
-              {batchProgress.done}/{batchProgress.total} batches…
-            </span>
-          )}
         </div>
 
-        {(batchRunning || batchResults.length > 0) && batchProgress.total > 0 && (
+        {/* Progress bar */}
+        {(running || grupoResults.length > 0) && progress.total > 0 && (
           <div className="px-4 pt-3">
-            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-2 bg-zinc-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 transition-all duration-300"
-                style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+                className="h-full bg-indigo-500 transition-all duration-300"
+                style={{ width: `${(progress.done / progress.total) * 100}%` }}
               />
             </div>
+            <p className="text-xs text-zinc-500 mt-1">{progress.done}/{progress.total} grupos concluídos</p>
           </div>
         )}
 
-        {batchResults.length > 0 && (
-          <div className="px-4 py-3 flex flex-col gap-3">
-            {batchResults.map((br) => {
-              const idx = debugEntries.findIndex((e) => e.label === `Detalhe batch ${br.batch}/${batchResults.length}`);
+        {/* Group results */}
+        {grupoResults.length > 0 && (
+          <div className="px-4 py-3 flex flex-col gap-2">
+            {grupoResults.map((gr) => {
+              const idx = debugEntries.findIndex(
+                (e) => e.label === `Especialista ${gr.grupo} — ${GRUPO_LABELS[gr.grupo]}`
+              );
               return (
-                <BatchCard
-                  key={br.batch}
-                  br={br}
+                <GrupoCard
+                  key={gr.grupo}
+                  grupo={gr.grupo}
+                  label={GRUPO_LABELS[gr.grupo]}
+                  stems={gr.stems}
+                  itens={gr.itens}
+                  erro={gr.erro}
+                  metadata={gr.metadata}
                   onDebug={idx >= 0 ? () => openDebug(idx) : undefined}
+                  onRerun={gr.erro ? () => runSingleGrupo(gr.grupo) : undefined}
                 />
               );
             })}
@@ -1061,47 +827,101 @@ export function StepIA({
         )}
 
         {tokenLogs.length > 0 && (
-          <div className="px-4 pb-3">
-            <p className="text-xs text-gray-400">
-              Total: {totalTokens.toLocaleString('pt-BR')} tokens · ${totalCusto.toFixed(4)} USD
+          <div className="px-4 pb-2">
+            <p className="text-xs text-zinc-500">
+              {totalTokens.toLocaleString('pt-BR')} tokens · ${totalCusto.toFixed(4)} USD
             </p>
           </div>
         )}
       </div>
 
+      {/* ─── Revisão de Pendências ─────────────────────────────────────────────── */}
+      {allDone && (() => {
+        // Collect all aguardando items grouped by section
+        const pendMap = new Map<string, { cod: string; descricao: string; r?: string }[]>();
+        for (const gr of grupoResults) {
+          for (const it of gr.itens) {
+            if (it.status !== 'aguardando') continue;
+            const xlsxItem = it.cod ? XLSX_POR_COD[it.cod] : undefined;
+            const secao = xlsxItem ? String(xlsxItem.secao) : '?';
+            if (!pendMap.has(secao)) pendMap.set(secao, []);
+            pendMap.get(secao)!.push({ cod: it.cod ?? '', descricao: it.descricao ?? '', r: it.r });
+          }
+        }
+        const totalPend = [...pendMap.values()].reduce((s, v) => s + v.length, 0);
+        const secoes = [...pendMap.entries()].sort(([a], [b]) => {
+          const na = parseFloat(a); const nb = parseFloat(b);
+          return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
+        });
+
+        return (
+          <div className={`border rounded-xl overflow-hidden ${totalPend > 0 ? 'border-amber-700/60' : 'border-green-700/60'}`}>
+            <div className={`px-4 py-3 flex items-center gap-3 ${totalPend > 0 ? 'bg-amber-950/30' : 'bg-green-950/30'}`}>
+              <span className={`font-bold text-sm flex-shrink-0 ${totalPend > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                {totalPend > 0 ? '⚠' : '✓'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold ${totalPend > 0 ? 'text-amber-300' : 'text-green-300'}`}>
+                  Revisão de Pendências
+                </p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  {totalPend > 0
+                    ? `${totalPend} ${totalPend === 1 ? 'item aguardando' : 'itens aguardando'} quantificação manual`
+                    : 'Todos os itens foram quantificados'}
+                </p>
+              </div>
+            </div>
+
+            {totalPend > 0 && (
+              <div className="px-4 py-3 border-t border-zinc-700 flex flex-col gap-3">
+                {secoes.map(([secao, itens]) => (
+                  <div key={secao}>
+                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">
+                      Seção {secao} — {itens.length} {itens.length === 1 ? 'item' : 'itens'}
+                    </p>
+                    <div className="flex flex-col gap-1">
+                      {itens.map((it) => (
+                        <div key={it.cod} className="bg-amber-950/20 border border-amber-800/40 rounded-lg px-3 py-2 text-xs">
+                          <span className="font-mono text-amber-400 mr-2">[{it.cod}]</span>
+                          <span className="text-zinc-300">{it.descricao}</span>
+                          {it.r && (
+                            <span className="ml-2 text-zinc-500 italic">— {it.r}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Erro */}
       {erro && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <pre className="text-xs text-red-700 whitespace-pre-wrap break-all flex-1">
+        <div className="flex items-start gap-3 bg-red-950/30 border border-red-800/60 rounded-lg px-4 py-3">
+          <pre className="text-xs text-red-400 whitespace-pre-wrap break-all flex-1">
             {erro}
           </pre>
-          {orchResult && !batchRunning && (
-            <button
-              onClick={() => {
-                setBatchResults([]);
-                setBatchDone(false);
-                setFinalFolha(null);
-                setErro('');
-                runBatches();
-              }}
-              className="flex-shrink-0 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 active:scale-95 transition-all whitespace-nowrap"
-            >
-              ↺ Tentar novamente
-            </button>
-          )}
         </div>
       )}
 
-      {/* Resumo + CTA */}
+      {/* CTA */}
       {finalFolha && (
-        <div className="flex items-center justify-between gap-4 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-          <div className="flex gap-4 text-xs text-gray-500">
+        <div className="flex items-center justify-between gap-4 bg-zinc-800/60 border border-zinc-700 rounded-xl px-4 py-3">
+          <div className="flex gap-4 text-xs text-zinc-400 flex-wrap">
             <span>{totalTokens.toLocaleString('pt-BR')} tokens</span>
-            <span className="font-semibold text-gray-700">${totalCusto.toFixed(4)} USD</span>
+            <span className="font-semibold text-zinc-200">${totalCusto.toFixed(4)} USD</span>
             <span>{finalFolha.itens.length} itens identificados</span>
+            {totalAguard > 0 && (
+              <span className="text-amber-400">
+                {totalAguard} aguardando revisão
+              </span>
+            )}
           </div>
           <button
-            onClick={() => onDone(finalFolha, orchResult!, leituraMap, tokenLogs)}
+            onClick={handleDone}
             className="flex-shrink-0 px-6 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 active:scale-95 transition-all"
           >
             Ver Revisão →
@@ -1111,3 +931,4 @@ export function StepIA({
     </div>
   );
 }
+

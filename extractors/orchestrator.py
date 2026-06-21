@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-orchestrator.py — prompts para o fluxo de três estágios:
-  1. Leitura Geral: lê TODAS as pranchas em batches de 3, documentando o projeto.
-  2. Orquestrador: recebe o mapa completo de leitura e decide o que falta.
-  3. Batch de Detalhe: analisa pranchas específicas para preencher quantidades.
+orchestrator.py — prompts para o novo pipeline de especialistas:
+  /especialista  — 1 chamada por grupo (G1-G6), checklist-driven
+  /auditar       — 1 chamada texto puro, compara totais por seção vs XLSX
+
+  Funções legadas (build_leitura_geral_prompt, build_orchestrator_prompt,
+  build_batch_prompt) são mantidas para backward compat com o endpoint
+  /ler-prancha, /orquestrar e /analisar-batch, que permanecem disponíveis.
 """
 
 import json
@@ -330,3 +333,196 @@ Responda SOMENTE com JSON válido:
   "divergencias": [],
   "erros_limitacoes": []
 }}"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOVO PIPELINE: prompts checklist-driven
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_especialista_prompt(
+    grupo: str,
+    secoes: list[str],
+    checklist: list[dict],
+    pdf_tables: list[dict],
+) -> str:
+    """
+    Prompt para o endpoint /especialista.
+
+    grupo         : "G1" … "G6"
+    secoes        : ["A", "7", "8"] etc.
+    checklist     : [{cod, descricao, unidade, zona, vlrUnit, totalEsperado, zerado}]
+    pdf_tables    : [{stem, itens: [{descricao, quantidade, unidade, status, fonte}]}]
+
+    Lógica:
+    - A IA recebe as imagens das pranchas relevantes + os dados QNT já extraídos do PDF.
+    - Para cada item do checklist, ela deve encontrar a quantidade.
+    - Prioridade: tabela QNT do PDF > inspeção visual da imagem.
+    - Itens zerados (materialCliente ou inaplicáveis) são confirmados diretamente.
+    """
+    secoes_str = ", ".join(secoes)
+
+    # Tabela do checklist — sem ref de quantidade e sem flag zerado (agnóstico de projeto)
+    checklist_rows = []
+    for it in checklist:
+        mat_cliente = " [MAT C&A — só MO]" if it.get("materialCliente") else ""
+        checklist_rows.append(
+            f"  {it['cod']:<8} | {it['descricao'][:55]:<55} | {it['unidade']:<4}"
+            f" | vlr={it['vlrUnit']:.2f}{mat_cliente}"
+        )
+    checklist_table = "\n".join(checklist_rows) if checklist_rows else "  (nenhum item neste grupo)"
+
+    # Tabelas QNT já extraídas do PDF
+    pdf_section_parts = []
+    for entry in pdf_tables:
+        stem = entry.get("stem", "?")
+        itens = entry.get("itens", [])
+        if not itens:
+            continue
+        linhas = [f"  [QNT PDF — {stem}]"]
+        for it in itens[:40]:
+            linhas.append(
+                f"    {it.get('descricao','')[:50]:<50} | qty={it.get('quantidade',0)} {it.get('unidade','')} | {it.get('status','')}"
+            )
+        pdf_section_parts.append("\n".join(linhas))
+
+    pdf_section = (
+        "\n\n".join(pdf_section_parts)
+        if pdf_section_parts
+        else "  (nenhuma tabela QNT extraída do PDF para este grupo)"
+    )
+
+    return f"""Você é um engenheiro orcamentista experiente analisando pranchas de projeto executivo
+de fit-out de loja C&A.
+
+GRUPO: {grupo} | SEÇÕES XLSX: {secoes_str}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHECKLIST — itens que DEVEM ter quantidade preenchida
+(cod | descrição | un | vlrUnit)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{checklist_table}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABELAS QNT JÁ EXTRAÍDAS DOS PDFs (use como fonte primária)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{pdf_section}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUAS TAREFAS (em ordem de prioridade):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. PARA CADA ITEM DO CHECKLIST ACIMA:
+   a) Se a tabela QNT do PDF já tem o valor → use-o (fonte="PDF", status="confirmado").
+   b) Se a tabela QNT do PDF não tem → olhe as imagens das pranchas e estime visualmente
+      a partir do que está desenhado (cotas, áreas anotadas, contagem de elementos).
+      Use status="parcial" se conseguir estimar, status="aguardando" se não for possível.
+   c) Se o item está marcado [MAT C&A]: a C&A fornece o material — registre apenas a MO (mão de obra).
+   d) NUNCA invente itens fora do checklist. Retorne SOMENTE os itens listados acima.
+
+2. USE O CAMPO "cod" PARA IDENTIFICAR CADA ITEM — não altere os códigos.
+
+3. RACIOCÍNIO: campo "r" em até 6 palavras-chave explicando de onde veio a qty.
+   Exemplos: "tabela QNT PDF prancha 331", "estimado visualmente cotas planta", "zerado inaplicável".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS CRÍTICAS:
+- Retorne TODOS os itens do checklist, mesmo que quantidade=0.
+- Não adicione itens que não estão no checklist.
+- Não altere os campos "cod" ou "descricao" do checklist.
+- Se não conseguir determinar a quantidade pelas pranchas/PDF: quantidade=0, status="aguardando".
+- NÃO use suposições sobre o tamanho da loja nem estimativas sem base visual nas pranchas.
+
+Responda SOMENTE com JSON válido:
+
+{{
+  "grupo": "{grupo}",
+  "itens": [
+    {{
+      "cod": "14.1",
+      "descricao": "Piso vinílico vendas/provadores (MO — mat. C&A)",
+      "unidade": "m2",
+      "quantidade": 1024.98,
+      "fonte": "PDF",
+      "status": "confirmado",
+      "r": "tabela QNT PDF prancha 331",
+      "pendencias": []
+    }}
+  ]
+}}"""
+
+
+def build_auditoria_prompt(
+    secao_totais: dict,
+    totais_xlsx: dict,
+) -> str:
+    """
+    Prompt para o endpoint /auditar.
+
+    secao_totais : {seção: {total_calculado, n_itens, itens_aguardando}}
+    totais_xlsx  : {seção: total_esperado}
+
+    Compara seção a seção e retorna flags de divergência.
+    """
+    linhas = []
+    all_secoes = sorted(set(list(secao_totais.keys()) + list(totais_xlsx.keys())))
+    for sec in all_secoes:
+        calc  = secao_totais.get(sec, {})
+        total = calc.get("total_calculado", 0) if isinstance(calc, dict) else calc
+        esp   = totais_xlsx.get(sec, 0)
+        delta = total - esp
+        delta_pct = (delta / esp * 100) if esp else 0
+        aguard = calc.get("itens_aguardando", 0) if isinstance(calc, dict) else 0
+        linhas.append(
+            f"  Seção {str(sec):<4} | calculado={total:>10,.0f} | esperado={esp:>10,.0f}"
+            f" | delta={delta:>+10,.0f} ({delta_pct:+.1f}%) | aguardando={aguard}"
+        )
+
+    tabela = "\n".join(linhas)
+
+    total_calc  = sum(
+        (v.get("total_calculado", 0) if isinstance(v, dict) else v)
+        for v in secao_totais.values()
+    )
+    total_esp   = sum(totais_xlsx.values())
+    delta_total = total_calc - total_esp
+
+    return f"""Você é um engenheiro sênior de orçamento auditando o resultado de uma análise de projeto.
+
+COMPARATIVO — CALCULADO vs ESPERADO (1ª Proposta CELMAR BLN):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{tabela}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAL CALCULADO: R$ {total_calc:,.0f}
+TOTAL ESPERADO:  R$ {total_esp:,.0f}
+DELTA TOTAL:     R$ {delta_total:+,.0f} ({(delta_total / total_esp * 100) if total_esp else 0:+.1f}%)
+
+SUAS TAREFAS:
+1. Para cada seção com |delta| > 10%: identifique a causa provável.
+   - delta muito positivo → itens duplicados, quantidades superestimadas, itens errados
+   - delta muito negativo → itens com quantidade=0 (aguardando), itens não identificados
+2. Liste as seções OK (delta < ±10%) e as que precisam de revisão.
+3. Sugira ações específicas de correção para as seções problemáticas.
+4. Calcule a margem de erro geral do orçamento.
+
+Responda SOMENTE com JSON válido:
+
+{{
+  "total_calculado": {total_calc:.0f},
+  "total_esperado": {total_esp:.0f},
+  "delta_total": {delta_total:.0f},
+  "delta_pct": {(delta_total / total_esp * 100) if total_esp else 0:.1f},
+  "secoes_ok": ["14", "22"],
+  "secoes_problema": [
+    {{
+      "secao": "12",
+      "delta": -12000,
+      "delta_pct": -15.0,
+      "causa_provavel": "Forro não quantificado (12 itens aguardando)",
+      "acao": "Verificar quantidade de m² de forro nas pranchas 309 e 310"
+    }}
+  ],
+  "itens_aguardando_total": 0,
+  "qualidade_geral": "boa | aceitavel | ruim",
+  "observacoes": "Texto livre com observações gerais"
+}}
+"""

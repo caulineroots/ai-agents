@@ -13,7 +13,7 @@ export function Stepper({
   accessible,
   onNavigate,
 }: {
-  current: Step;
+  current:    Step;
   accessible: Set<Step>;
   onNavigate: (s: Step) => void;
 }) {
@@ -30,20 +30,22 @@ export function Stepper({
               <button
                 onClick={() => clickable && onNavigate(num)}
                 disabled={!clickable}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                   done   ? 'bg-green-500 text-white' :
-                  active ? 'bg-blue-600 text-white' :
-                           'bg-gray-200 text-gray-500'
+                  active ? 'bg-indigo-500 text-white ring-2 ring-indigo-400/40' :
+                           'bg-zinc-700 text-zinc-400'
                 } ${clickable ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
               >
                 {done ? '✓' : num}
               </button>
-              <span className={`text-xs mt-1 whitespace-nowrap ${active ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+              <span className={`text-xs mt-1 whitespace-nowrap ${
+                active ? 'text-indigo-400 font-medium' : 'text-zinc-500'
+              }`}>
                 {STEP_LABELS[num]}
               </span>
             </div>
             {idx < stepNums.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-2 mb-4 ${done ? 'bg-green-400' : 'bg-gray-200'}`} />
+              <div className={`h-px flex-1 mx-2 mb-4 ${done ? 'bg-green-500/50' : 'bg-zinc-700'}`} />
             )}
           </div>
         );

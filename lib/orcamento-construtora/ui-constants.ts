@@ -17,22 +17,22 @@ export const CATEGORIA_LABEL: Record<Categoria, string> = {
 };
 
 export const CATEGORIA_COLOR: Record<Categoria, string> = {
-  civil:        'bg-stone-100 text-stone-700 border-stone-300',
-  eletrica:     'bg-yellow-50 text-yellow-700 border-yellow-300',
-  hidraulica:   'bg-blue-50 text-blue-700 border-blue-300',
-  marcenaria:   'bg-amber-50 text-amber-700 border-amber-300',
-  vidros:       'bg-cyan-50 text-cyan-700 border-cyan-300',
-  revestimento: 'bg-purple-50 text-purple-700 border-purple-300',
-  pintura:      'bg-pink-50 text-pink-700 border-pink-300',
-  fachada:      'bg-orange-50 text-orange-700 border-orange-300',
-  climatizacao: 'bg-teal-50 text-teal-700 border-teal-300',
-  outro:        'bg-gray-50 text-gray-600 border-gray-300',
+  civil:        'bg-stone-700 text-stone-100 border-stone-500',
+  eletrica:     'bg-yellow-500 text-yellow-950 border-yellow-400',
+  hidraulica:   'bg-blue-600 text-blue-50 border-blue-400',
+  marcenaria:   'bg-amber-500 text-amber-950 border-amber-400',
+  vidros:       'bg-cyan-600 text-cyan-50 border-cyan-400',
+  revestimento: 'bg-purple-600 text-purple-50 border-purple-400',
+  pintura:      'bg-pink-600 text-pink-50 border-pink-400',
+  fachada:      'bg-orange-500 text-orange-950 border-orange-400',
+  climatizacao: 'bg-teal-600 text-teal-50 border-teal-400',
+  outro:        'bg-zinc-600 text-zinc-100 border-zinc-400',
 };
 
 export const STATUS_LABEL = {
-  confirmado: { label: '100% confirmado',       color: 'text-green-700 bg-green-50 border-green-200', dot: 'bg-green-500' },
-  parcial:    { label: 'Estimativa — confirmar', color: 'text-blue-700 bg-blue-50 border-blue-200',   dot: 'bg-blue-400'  },
-  aguardando: { label: 'Não identificado',       color: 'text-red-700 bg-red-50 border-red-200',      dot: 'bg-red-400'   },
+  confirmado: { label: 'Confirmado',      color: 'text-zinc-200 bg-zinc-800/80 border-zinc-700',       dot: 'bg-green-500' },
+  parcial:    { label: 'Pendente',        color: 'text-zinc-200 bg-zinc-800/80 border-amber-700/60',   dot: 'bg-amber-400' },
+  aguardando: { label: 'Não Identificado', color: 'text-zinc-200 bg-red-950/30 border-red-800/60',     dot: 'bg-red-500'   },
 };
 
 export const FONTE_BADGE: Record<string, string> = {

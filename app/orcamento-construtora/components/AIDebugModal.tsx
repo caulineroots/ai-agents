@@ -19,7 +19,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="px-2.5 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+      className="px-2.5 py-1 text-xs rounded border border-zinc-600 text-zinc-400 hover:bg-zinc-700 transition-colors flex-shrink-0"
     >
       {copied ? '✓ Copiado' : 'Copiar'}
     </button>
@@ -59,19 +59,19 @@ export function AIDebugModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
+        className="bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
         style={{ height: '88vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-700 bg-zinc-800/70 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <span className="text-base font-bold text-gray-800">Debug IA</span>
-            <span className="text-xs text-gray-400">{entries.length} chamada{entries.length !== 1 ? 's' : ''}</span>
+            <span className="text-base font-bold text-zinc-100">Debug IA</span>
+            <span className="text-xs text-zinc-500">{entries.length} chamada{entries.length !== 1 ? 's' : ''}</span>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 text-xl leading-none px-1"
+            className="text-zinc-500 hover:text-zinc-200 text-xl leading-none px-1 transition-colors"
           >
             ✕
           </button>
@@ -79,15 +79,15 @@ export function AIDebugModal({
 
         <div className="flex flex-1 overflow-hidden">
           {/* ── Sidebar: lista de chamadas ───────────────────────────── */}
-          <div className="w-52 border-r border-gray-200 overflow-y-auto flex-shrink-0 bg-gray-50 p-2 flex flex-col gap-1">
+          <div className="w-52 border-r border-zinc-700 overflow-y-auto flex-shrink-0 bg-zinc-800/40 p-2 flex flex-col gap-1">
             {entries.map((e, i) => (
               <button
                 key={i}
                 onClick={() => setSelected(i)}
                 className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
                   selected === i
-                    ? 'bg-blue-600 text-white font-semibold'
-                    : 'text-gray-600 hover:bg-gray-200'
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-zinc-400 hover:bg-zinc-700'
                 }`}
               >
                 <span className="block font-mono text-xs opacity-60 mb-0.5">#{i + 1}</span>
@@ -100,15 +100,15 @@ export function AIDebugModal({
           <div className="flex-1 flex flex-col overflow-hidden">
 
             {/* Tabs */}
-            <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-gray-200 flex-shrink-0">
+            <div className="flex items-center gap-1 px-4 pt-3 pb-0 border-b border-zinc-700 flex-shrink-0">
               {(['prompt', 'output'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
                   className={`px-4 py-2 text-sm font-medium rounded-t-lg border border-b-0 transition-colors ${
                     tab === t
-                      ? 'bg-white border-gray-200 text-gray-900'
-                      : 'bg-transparent border-transparent text-gray-400 hover:text-gray-600'
+                      ? 'bg-zinc-900 border-zinc-700 text-zinc-100'
+                      : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   {t === 'prompt' ? '→ Prompt (Input)' : '← Output Bruto'}
@@ -121,11 +121,11 @@ export function AIDebugModal({
 
             {/* Conteúdo */}
             {current ? (
-              <pre className="flex-1 overflow-auto p-4 text-xs font-mono leading-relaxed text-gray-800 whitespace-pre-wrap break-all bg-white">
+              <pre className="flex-1 overflow-auto p-4 text-xs font-mono leading-relaxed text-zinc-300 whitespace-pre-wrap break-all bg-zinc-950">
                 {content || '(vazio)'}
               </pre>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+              <div className="flex-1 flex items-center justify-center text-sm text-zinc-500">
                 Nenhuma chamada disponível
               </div>
             )}

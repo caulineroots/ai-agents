@@ -1,63 +1,198 @@
-import { useState, useMemo, useEffect } from 'react';
+'use client';
+
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { FolhaOrcamento, ItemOrcamento } from '@/lib/orcamento-construtora/types';
-import { ZoomModal } from './ZoomModal';
-import { ItemCard } from './ItemCard';
+import type { PranchaGroup } from '@/lib/orcamento-construtora/image-store';
+import { routeByFilename, GRUPO_LABELS } from '@/lib/orcamento-construtora/prancha-router';
+import { XLSX_POR_COD } from '@/lib/orcamento-construtora/xlsx-checklist';
+import type { GrupoEspecialista } from '@/lib/orcamento-construtora/xlsx-checklist';
 import { AddItemForm } from './AddItemForm';
+import { ItemCard } from './ItemCard';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface PranchaEntry {
+  stem:     string;
+  grupo:    GrupoEspecialista | null;
+  imageUrl: string | null;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function StepReview({
   folha,
-  imageBlobs,
+  groups,
   onDone,
 }: {
-  folha: FolhaOrcamento;
-  imageBlobs: Blob[];
+  folha:  FolhaOrcamento;
+  groups: PranchaGroup[];
   onDone: (updated: FolhaOrcamento) => void;
 }) {
-  const [edits, setEdits]                 = useState<Record<number, number>>({});
-  const [removedIds, setRemovedIds]       = useState<Set<number>>(new Set());
-  const [addedItems, setAddedItems]       = useState<ItemOrcamento[]>([]);
-  const [showAddFormFor, setShowAddFormFor] = useState<string | null>(null);
-  const [zoomUrl, setZoomUrl]             = useState<string | null>(null);
-  const [zoomLabel, setZoomLabel]         = useState('');
-  const [saving, setSaving]               = useState(false);
-  const [viewingImageIdx, setViewingImageIdx] = useState(0);
-  const [imageUrls, setImageUrls]         = useState<string[]>([]);
+  // ── Edit state ─────────────────────────────────────────────────────────────
+  const [edits,      setEdits]      = useState<Record<number, number>>({});
+  const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
+  const [addedItems, setAddedItems] = useState<ItemOrcamento[]>([]);
+  const [showAddFor, setShowAddFor] = useState(false);
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+  const [pranchaIdx, setPranchaIdx] = useState(0);
+  const [reviewIdx,  setReviewIdx]  = useState(0);
+
+  // ── Panel drag state ───────────────────────────────────────────────────────
+  const [panelPos,    setPanelPos]    = useState<{ x: number; y: number } | null>(null);
+  const [isDragging,  setIsDragging]  = useState(false);
+  const panelDragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
+  const panelRef     = useRef<HTMLDivElement>(null);
+  const cardRefs     = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Initialise panel position client-side (avoids SSR mismatch)
+  useEffect(() => {
+    setPanelPos({ x: window.innerWidth - 390, y: 60 });
+  }, []);
+
+  // ── Zoom / pan (image) ─────────────────────────────────────────────────────
+  const [zoom, setZoom] = useState(1);
+  const [pan,  setPan]  = useState({ x: 0, y: 0 });
+  const imgDragRef        = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Image URLs ─────────────────────────────────────────────────────────────
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
 
   useEffect(() => {
-    const urls = imageBlobs.map((b) => {
-      const blob = b.type ? b : new Blob([b], { type: 'image/jpeg' });
-      return URL.createObjectURL(blob);
-    });
+    const urls = groups.map((g) => (g.imageFile ? URL.createObjectURL(g.imageFile) : ''));
     setImageUrls(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
-  }, [imageBlobs]);
+    return () => urls.forEach((u) => { if (u) URL.revokeObjectURL(u); });
+  }, [groups]);
 
-  const currentViewUrl = imageUrls[viewingImageIdx] ?? null;
+  // ── Prancha entries ────────────────────────────────────────────────────────
+  const pranchas = useMemo<PranchaEntry[]>(() => {
+    const stems   = groups.map((g) => g.stem);
+    const routing = routeByFilename(stems);
+    const stemToGrupo = new Map<string, GrupoEspecialista>();
+    for (const [g, ss] of Object.entries(routing) as [GrupoEspecialista, string[]][]) {
+      for (const s of ss) { if (!stemToGrupo.has(s)) stemToGrupo.set(s, g); }
+    }
+    return groups.map((g, i) => ({
+      stem:     g.stem,
+      grupo:    stemToGrupo.get(g.stem) ?? null,
+      imageUrl: imageUrls[i] || null,
+    }));
+  }, [groups, imageUrls]);
 
-  const applyEdit      = (id: number, v: number) => setEdits((prev) => ({ ...prev, [id]: v }));
-  const removeItem     = (id: number) => setRemovedIds((prev) => new Set([...prev, id]));
-  const addItemToGroup = (item: ItemOrcamento) => { setAddedItems((prev) => [...prev, item]); setShowAddFormFor(null); };
+  const current = pranchas[pranchaIdx] ?? null;
 
+  // ── Visible items ──────────────────────────────────────────────────────────
   const visibleItems = useMemo(
     () => [...folha.itens, ...addedItems].filter((i) => !removedIds.has(i.id)),
     [folha.itens, addedItems, removedIds],
   );
 
-  const grouped = useMemo(() => {
-    const byAmbiente = new Map<string, ItemOrcamento[]>();
-    for (const item of visibleItems) {
-      const amb = item.ambiente ?? 'Sem ambiente';
-      if (!byAmbiente.has(amb)) byAmbiente.set(amb, []);
-      byAmbiente.get(amb)!.push(item);
-    }
-    return [...byAmbiente.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [visibleItems]);
+  // Items for current prancha's grupo
+  const stripItems = useMemo(() => {
+    if (!current?.grupo) return visibleItems;
+    return visibleItems.filter((item) => {
+      const cod = (item as ItemOrcamento & { cod?: string }).cod;
+      if (!cod) return true;
+      return XLSX_POR_COD[cod]?.grupo === current.grupo;
+    });
+  }, [visibleItems, current]);
 
-  const countByStatus = {
+  const counts = useMemo(() => ({
     confirmado: visibleItems.filter((i) => i.status === 'confirmado').length,
     parcial:    visibleItems.filter((i) => i.status === 'parcial').length,
     aguardando: visibleItems.filter((i) => i.status === 'aguardando').length,
+  }), [visibleItems]);
+
+  // ── Auto-scroll panel to active review card ────────────────────────────────
+  useEffect(() => {
+    const el = cardRefs.current[reviewIdx];
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [reviewIdx]);
+
+  // Reset review cursor when prancha changes
+  useEffect(() => { setReviewIdx(0); }, [pranchaIdx]);
+
+  // ── Image zoom / pan handlers ──────────────────────────────────────────────
+  useEffect(() => {
+    const el = imageContainerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setZoom((z) => Math.min(8, Math.max(0.25, z * (e.deltaY < 0 ? 1.02 : 0.98))));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onImgPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    imgDragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  }, [pan]);
+
+  const onImgPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!imgDragRef.current) return;
+    setPan({
+      x: imgDragRef.current.panX + (e.clientX - imgDragRef.current.startX),
+      y: imgDragRef.current.panY + (e.clientY - imgDragRef.current.startY),
+    });
+  }, []);
+
+  const onImgPointerUp = useCallback(() => { imgDragRef.current = null; }, []);
+
+  const navigate = useCallback((idx: number) => {
+    setPranchaIdx(idx);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === 'ArrowRight') navigate(Math.min(pranchas.length - 1, pranchaIdx + 1));
+      if (e.key === 'ArrowLeft')  navigate(Math.max(0, pranchaIdx - 1));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pranchas.length, pranchaIdx, navigate]);
+
+  // ── Panel drag handlers ────────────────────────────────────────────────────
+  const onPanelHandleDown = (e: React.PointerEvent) => {
+    // Don't start drag when clicking interactive elements
+    const tag = (e.target as HTMLElement).tagName;
+    if (['INPUT', 'BUTTON', 'TEXTAREA', 'SELECT', 'LABEL', 'A'].includes(tag)) return;
+    if ((e.target as HTMLElement).closest('button, input, textarea, select, label, a')) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    panelDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX:   panelPos?.x ?? 0,
+      posY:   panelPos?.y ?? 0,
+    };
+    setIsDragging(true);
   };
+
+  const onPanelHandleMove = (e: React.PointerEvent) => {
+    if (!panelDragRef.current) return;
+    setPanelPos({
+      x: panelDragRef.current.posX + (e.clientX - panelDragRef.current.startX),
+      y: panelDragRef.current.posY + (e.clientY - panelDragRef.current.startY),
+    });
+  };
+
+  const onPanelHandleUp = () => {
+    panelDragRef.current = null;
+    setIsDragging(false);
+  };
+
+  // ── Edit helpers ───────────────────────────────────────────────────────────
+  const applyEdit      = (id: number, v: number) => setEdits((p) => ({ ...p, [id]: v }));
+  const removeItem     = (id: number) => setRemovedIds((p) => new Set([...p, id]));
+  const addItemToGroup = (item: ItemOrcamento) => { setAddedItems((p) => [...p, item]); setShowAddFor(false); };
 
   const hasChanges = Object.keys(edits).length > 0 || removedIds.size > 0 || addedItems.length > 0;
 
@@ -69,180 +204,214 @@ export function StepReview({
     }),
   });
 
-  const handleApply = async () => {
-    setSaving(true);
-    onDone(buildUpdatedFolha());
-    setSaving(false);
-  };
+  const PANEL_W = 368;
 
   return (
-    <div className="flex gap-5 w-full items-start">
-      {zoomUrl && <ZoomModal url={zoomUrl} label={zoomLabel} onClose={() => setZoomUrl(null)} />}
+    <div className="fixed inset-0 z-50 bg-zinc-950 overflow-hidden">
 
-      {/* LEFT: items */}
-      <div className="flex-1 min-w-0 flex flex-col gap-5">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">Passo 3 — Revisão</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{folha.projeto}{folha.cliente ? ` · ${folha.cliente}` : ''}</p>
-          <div className="mt-2 flex gap-3 flex-wrap text-xs">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />{countByStatus.confirmado} confirmados</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />{countByStatus.parcial} estimativas</span>
-            {countByStatus.aguardando > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />{countByStatus.aguardando} não identificados</span>}
-            {removedIds.size > 0 && <span className="text-red-500">✕ {removedIds.size} removido(s)</span>}
-            {addedItems.length > 0 && <span className="text-blue-600">+ {addedItems.length} adicionado(s)</span>}
+      {/* ── PDF image layer ── */}
+      <div
+        ref={imageContainerRef}
+        className="absolute inset-0"
+        style={{ cursor: imgDragRef.current ? 'grabbing' : 'grab' }}
+        onPointerDown={onImgPointerDown}
+        onPointerMove={onImgPointerMove}
+        onPointerUp={onImgPointerUp}
+        onPointerCancel={onImgPointerUp}
+      >
+        {current?.imageUrl ? (
+          <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
+            <img
+              src={current.imageUrl}
+              alt={current.stem}
+              draggable={false}
+              style={{
+                transform:       `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+                transformOrigin: 'center center',
+                maxWidth:        '100%',
+                maxHeight:       '100%',
+                objectFit:       'contain',
+                userSelect:      'none',
+              }}
+            />
           </div>
+        ) : (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-600">
+            <span className="text-5xl select-none">🖼</span>
+            <p className="text-sm select-none">
+              {pranchas.length === 0 ? 'Nenhuma prancha disponível' : 'Sem imagem para esta prancha'}
+            </p>
+          </div>
+        )}
+
+        {/* Prev / Next */}
+        <button onClick={() => navigate(Math.max(0, pranchaIdx - 1))} disabled={pranchaIdx === 0}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-10 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 backdrop-blur-sm text-3xl font-thin transition-all">
+          ‹
+        </button>
+        <button onClick={() => navigate(Math.min(pranchas.length - 1, pranchaIdx + 1))} disabled={pranchaIdx >= pranchas.length - 1}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-10 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 backdrop-blur-sm text-3xl font-thin transition-all">
+          ›
+        </button>
+
+        {/* Zoom hint */}
+        <div className="absolute bottom-3 left-3 text-xs text-zinc-700 pointer-events-none select-none">
+          Ctrl + scroll · arrastar
         </div>
-
-        {grouped.map(([ambiente, items]) => (
-          <div key={ambiente} className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <span className="w-1.5 h-4 bg-blue-500 rounded-full inline-block" />
-                {ambiente}
-                <span className="text-gray-400 font-normal">({items.length})</span>
-              </h3>
-              <button
-                onClick={() => setShowAddFormFor(showAddFormFor === ambiente ? null : ambiente)}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-              >
-                + Adicionar
-              </button>
-            </div>
-            <div className="p-3 flex flex-col gap-2">
-              {items.map((item) => (
-                <ItemCard key={item.id} item={item} qtdEdit={edits[item.id]} onEditQtd={applyEdit} onRemove={removeItem} />
-              ))}
-              {showAddFormFor === ambiente ? (
-                <AddItemForm defaultAmbiente={ambiente} onAdd={addItemToGroup} onCancel={() => setShowAddFormFor(null)} />
-              ) : (
-                <button
-                  onClick={() => setShowAddFormFor(ambiente)}
-                  className="w-full py-2 rounded-lg border-2 border-dashed border-gray-200 text-xs text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors"
-                >
-                  + Adicionar item em {ambiente}
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {(folha.divergencias ?? []).length > 0 && (
-          <div className="border border-amber-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
-              <span className="text-amber-600 text-sm">⚠</span>
-              <h3 className="text-sm font-semibold text-amber-800">
-                Divergências encontradas ({folha.divergencias!.length})
-              </h3>
-            </div>
-            <div className="divide-y divide-amber-100">
-              {folha.divergencias!.map((d, i) => (
-                <div key={i} className="px-4 py-3 flex flex-col gap-1 bg-amber-50/50">
-                  <p className="text-sm font-medium text-gray-800">{d.campo}</p>
-                  <div className="flex gap-4 flex-wrap text-xs text-gray-600">
-                    {d.valor_pdf && <span><span className="font-medium text-green-700">PDF:</span> {d.valor_pdf}</span>}
-                    {d.valor_dxf && <span><span className="font-medium text-blue-700">DXF:</span> {d.valor_dxf}</span>}
-                    {d.valor_ia  && <span><span className="font-medium text-purple-700">IA:</span> {d.valor_ia}</span>}
-                  </div>
-                  {d.recomendacao && <p className="text-xs text-amber-700 italic">{d.recomendacao}</p>}
-                </div>
-              ))}
-            </div>
+        {zoom !== 1 && (
+          <div className="absolute top-3 left-3 text-xs bg-black/50 text-zinc-300 px-2 py-0.5 rounded-full pointer-events-none">
+            {Math.round(zoom * 100)}%
           </div>
         )}
+      </div>
 
-        {(folha.erros_ia ?? []).length > 0 && (
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-600">
-                Limitações reportadas pela IA ({folha.erros_ia!.length})
-              </h3>
-            </div>
-            <ul className="divide-y divide-gray-100">
-              {folha.erros_ia!.map((e, i) => (
-                <li key={i} className="px-4 py-2 text-xs text-gray-500 flex gap-2">
-                  <span className="text-gray-300 shrink-0">·</span>
-                  {e}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="flex gap-3 items-center justify-end pt-1 flex-wrap">
-          {hasChanges && (
-            <span className="text-xs text-blue-600 mr-auto">
-              {Object.keys(edits).length > 0 && `${Object.keys(edits).length} quantidade(s) editada(s)`}
-              {removedIds.size > 0 && ` · ${removedIds.size} removido(s)`}
-              {addedItems.length > 0 && ` · ${addedItems.length} adicionado(s)`}
+      {/* ── Top bar ── */}
+      <div className="absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800 z-20 pointer-events-none">
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <span className="text-sm font-semibold text-white">Revisão</span>
+          {current?.grupo && (
+            <span className="text-xs px-2 py-0.5 rounded-full border border-zinc-700 bg-zinc-800/80 text-zinc-300">
+              {current.grupo} · {GRUPO_LABELS[current.grupo]}
             </span>
           )}
-          <button
-            onClick={() => onDone(buildUpdatedFolha())}
-            disabled={saving}
-            className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 active:scale-95 transition-all"
-          >
-            Ver Orçamento →
-          </button>
+          <span className="text-xs text-zinc-500">{pranchaIdx + 1}/{pranchas.length}</span>
+        </div>
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />{counts.confirmado}
+          </span>
+          <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />{counts.parcial}
+          </span>
+          {counts.aguardando > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-red-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{counts.aguardando} pendentes
+            </span>
+          )}
           {hasChanges && (
-            <button
-              onClick={handleApply}
-              disabled={saving}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 active:scale-95 transition-all"
-            >
-              {saving ? 'Salvando...' : 'Aplicar e recalcular →'}
+            <button onClick={() => onDone(buildUpdatedFolha())}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 active:scale-95 transition-all">
+              Aplicar
             </button>
           )}
+          <button onClick={() => onDone(buildUpdatedFolha())}
+            className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 active:scale-95 transition-all">
+            Ver Orçamento →
+          </button>
         </div>
       </div>
 
-      {/* RIGHT: sticky image panel */}
-      <div className="flex-shrink-0 sticky top-0 self-start" style={{ width: '1000px' }}>
-        <div className="rounded-xl overflow-hidden bg-gray-900 shadow-xl flex flex-col" style={{ height: 'calc(100vh - 32px)' }}>
+      {/* ── Floating panel ── */}
+      {panelPos && (
+        <div
+          ref={panelRef}
+          className="absolute z-30 flex flex-col rounded-xl border border-zinc-700/60 bg-zinc-900/50 backdrop-blur-md shadow-2xl overflow-hidden"
+          style={{
+            left:      panelPos.x,
+            top:       panelPos.y,
+            width:     PANEL_W,
+            maxHeight: 'calc(100vh - 80px)',
+            cursor:    isDragging ? 'grabbing' : 'grab',
+          }}
+          onPointerDown={onPanelHandleDown}
+          onPointerMove={onPanelHandleMove}
+          onPointerUp={onPanelHandleUp}
+          onPointerCancel={onPanelHandleUp}
+        >
+          {/* Panel header */}
           <div
-            className="relative bg-gray-950 flex items-center justify-center cursor-zoom-in flex-1 min-h-0"
-            onClick={() => { if (currentViewUrl) { setZoomUrl(currentViewUrl); setZoomLabel(`Prancha ${viewingImageIdx + 1}`); } }}
+            className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2.5 border-b border-zinc-700/60 bg-zinc-800/50 select-none"
           >
-            {currentViewUrl ? (
-              <img key={viewingImageIdx} src={currentViewUrl} alt={`Prancha ${viewingImageIdx + 1}`} className="max-w-full max-h-full object-contain" style={{ display: 'block' }} />
+            <div className="flex items-center gap-2">
+              {/* Drag indicator dots */}
+              <span className="flex flex-col gap-0.5 opacity-40">
+                <span className="flex gap-0.5">{[0,1,2].map(i => <span key={i} className="w-1 h-1 rounded-full bg-zinc-400" />)}</span>
+                <span className="flex gap-0.5">{[0,1,2].map(i => <span key={i} className="w-1 h-1 rounded-full bg-zinc-400" />)}</span>
+              </span>
+              <span className="text-xs font-semibold text-zinc-200">
+                {stripItems.length} itens
+                {current?.grupo ? ` — ${current.grupo}` : ''}
+              </span>
+              {stripItems.filter((i) => i.status === 'aguardando').length > 0 && (
+                <span className="text-xs text-red-400">
+                  {stripItems.filter((i) => i.status === 'aguardando').length} pendentes
+                </span>
+              )}
+            </div>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setShowAddFor((v) => !v)}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap"
+            >
+              + item
+            </button>
+          </div>
+
+          {/* Add item form */}
+          {showAddFor && (
+            <div className="flex-shrink-0 px-3 py-2 border-b border-zinc-700/60 bg-zinc-800/30">
+              <AddItemForm
+                defaultAmbiente={current?.grupo ?? 'Geral'}
+                onAdd={addItemToGroup}
+                onCancel={() => setShowAddFor(false)}
+              />
+            </div>
+          )}
+
+          {/* Prancha thumbnails */}
+          <div className="flex-shrink-0 flex gap-1.5 px-3 py-2 border-b border-zinc-700/60 overflow-x-auto"
+            style={{ scrollbarWidth: 'none' }}>
+            {pranchas.map((p, i) => (
+              <button key={p.stem} onClick={() => navigate(i)} title={p.stem}
+                className={`flex-shrink-0 rounded overflow-hidden border-2 transition-all ${
+                  i === pranchaIdx ? 'border-blue-400 opacity-100' : 'border-transparent opacity-40 hover:opacity-70'
+                }`}>
+                {p.imageUrl
+                  ? <img src={p.imageUrl} alt={p.stem} className="h-9 w-12 object-cover" />
+                  : <div className="h-9 w-12 bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">?</div>
+                }
+              </button>
+            ))}
+          </div>
+
+          {/* Card list */}
+          <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-2" style={{ scrollbarWidth: 'thin', cursor: 'default' }}>
+            {stripItems.length === 0 ? (
+              <p className="text-xs text-zinc-500 text-center py-6">
+                Nenhum item para esta prancha
+              </p>
             ) : (
-              <div className="flex flex-col items-center gap-2 text-gray-500">
-                <span className="text-5xl">🖼</span>
-                <p className="text-sm text-center px-8">
-                  {imageBlobs.length === 0 ? 'Re-faça o upload do PDF para ver as imagens' : `Prancha ${viewingImageIdx + 1} sem imagem`}
-                </p>
-              </div>
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); setViewingImageIdx((i) => Math.max(0, i - 1)); }}
-              disabled={viewingImageIdx === 0}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-12 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm text-4xl font-thin select-none"
-            >
-              ‹
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setViewingImageIdx((i) => Math.min(imageUrls.length - 1, i + 1)); }}
-              disabled={viewingImageIdx >= imageUrls.length - 1}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-12 h-20 flex items-center justify-center rounded-xl bg-black/50 hover:bg-black/80 text-white disabled:opacity-20 transition-all backdrop-blur-sm text-4xl font-thin select-none"
-            >
-              ›
-            </button>
-            {currentViewUrl && (
-              <div className="absolute top-2 right-2 bg-black/40 text-white text-xs px-2 py-0.5 rounded-full pointer-events-none">🔍 zoom</div>
+              stripItems.map((item, i) => (
+                <div key={item.id} ref={(el) => { cardRefs.current[i] = el; }}>
+                  <ItemCard
+                    item={item}
+                    qtdEdit={edits[item.id]}
+                    onEditQtd={applyEdit}
+                    onRemove={removeItem}
+                    isActive={i === reviewIdx}
+                    onRevisado={i < stripItems.length - 1 ? () => setReviewIdx(i + 1) : undefined}
+                  />
+                </div>
+              ))
             )}
           </div>
-          <div className="h-11 bg-gray-800 px-2 flex items-center gap-1">
-            <div className="flex-1 flex gap-1 overflow-x-auto py-1">
-              {imageUrls.map((url, i) => (
-                <button key={i} onClick={() => setViewingImageIdx(i)} title={`Prancha ${i + 1}`}
-                  className={`flex-shrink-0 rounded overflow-hidden border-2 transition-all ${i === viewingImageIdx ? 'border-blue-400' : 'border-transparent opacity-40 hover:opacity-75'}`}>
-                  <img src={url} alt={`p${i + 1}`} className="h-7 w-10 object-cover" />
-                </button>
-              ))}
-            </div>
-            <span className="text-gray-500 text-xs ml-2 flex-shrink-0">{viewingImageIdx + 1}/{imageUrls.length}</span>
+
+          {/* Panel footer */}
+          <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-t border-zinc-700/60 bg-zinc-800/30">
+            <span className="text-xs text-zinc-500">
+              {reviewIdx + 1}/{Math.max(1, stripItems.length)} revisado
+            </span>
+            <button
+              onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              ↺ reset zoom
+            </button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

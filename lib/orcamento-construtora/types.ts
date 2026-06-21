@@ -42,6 +42,8 @@ export interface ItemOrcamento {
   fonte?: FonteItem;
   /** Confiança 0-100% na quantidade informada. */
   confianca?: number;
+  /** Raciocínio curto da IA explicando a origem da quantidade. */
+  raciocinio?: string;
 }
 
 export interface FolhaOrcamento {

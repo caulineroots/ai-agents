@@ -15,6 +15,7 @@ import asyncio
 import tempfile
 import base64
 import logging
+import fitz  # PyMuPDF — PDF → PNG
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
@@ -34,7 +35,10 @@ from extractors.image_processor import compress_to_jpeg
 from extractors.context_builder import classify_prancha, build_context, build_prompt, PROMPT_NO_CONTEXT
 from extractors.ai_client import call_claude, call_claude_multi, parse_ai_json
 from extractors.result_builder import build_items
-from extractors.orchestrator import build_leitura_geral_prompt, build_orchestrator_prompt, build_batch_prompt
+from extractors.orchestrator import (
+    build_leitura_geral_prompt, build_orchestrator_prompt, build_batch_prompt,
+    build_especialista_prompt, build_auditoria_prompt,
+)
 from aprender import router as aprender_router
 
 logging.basicConfig(level=logging.INFO)
@@ -101,33 +105,34 @@ def _score_prancha(pdf: dict, dxf: dict) -> int:
     return score
 
 
+@app.post("/extrair-tabelas")
 @app.post("/extrair-codigo")
-async def extrair_codigo(
+async def extrair_tabelas(
     image: Optional[UploadFile] = File(None),
     pdf:   Optional[UploadFile] = File(None),
-    dxf:   Optional[UploadFile] = File(None),
+    dxf:   Optional[UploadFile] = File(None),  # aceito mas ignorado
 ):
     """
     Extração programática pura — sem chamar IA.
-    Recebe opcionalmente: image (PNG/JPG), pdf (PDF), dxf (DXF ou DWG).
-    Retorna classificação, itens extraídos e debug detalhado.
+    Recebe opcionalmente: image (PNG/JPG), pdf (PDF).
+    O DXF é aceito para backward compat mas ignorado.
+    Filtra o PDF para retornar SOMENTE tabelas QNT estruturadas.
     """
     stem = "prancha"
-    for up in [image, pdf, dxf]:
+    for up in [image, pdf]:
         if up and up.filename:
             stem = Path(up.filename).stem
             break
-    log.info("[extrair-codigo] Processando: %s", stem)
+    log.info("[extrair-tabelas] Processando: %s", stem)
 
     _empty_pdf = {"ok": False, "cea_qnt_tables": [], "quadro_acabamentos": [],
                   "measure_lines": [], "area_tags": [], "errors": []}
-    _empty_dxf = {"ok": False, "layers": [], "dims": [], "blocks": {}, "texts": [], "errors": []}
 
     erros = []
     pdf_data = _empty_pdf.copy()
-    dxf_data = _empty_dxf.copy()
 
-    # ── Processar PDF ─────────────────────────────────────────────────────────
+    # ── Processar PDF — tabelas QNT + conversão para PNG ─────────────────────
+    png_b64: Optional[str] = None
     if pdf and pdf.filename:
         try:
             raw_pdf = await pdf.read()
@@ -135,80 +140,56 @@ async def extrair_codigo(
                 tf.write(raw_pdf)
                 tmp_pdf = tf.name
             pdf_data = extract_pdf(tmp_pdf)
-            os.unlink(tmp_pdf)
-            log.info("  PDF ok: %d tabelas, %d linhas medida",
+            log.info("  PDF ok: %d tabelas QNT, %d linhas medida",
                      len(pdf_data["cea_qnt_tables"]), len(pdf_data["measure_lines"]))
+
+            # Converter página 0 para PNG (150 DPI) para análise visual da IA
+            try:
+                doc = fitz.open(tmp_pdf)
+                page = doc[0]
+                mat = fitz.Matrix(150 / 72, 150 / 72)  # 150 DPI
+                pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
+                png_bytes = pix.tobytes("png")
+                png_b64 = base64.b64encode(png_bytes).decode()
+                doc.close()
+                log.info("  PDF→PNG: página 0 convertida (%dKB)", len(png_bytes) // 1024)
+            except Exception as e:
+                log.warning("  PDF→PNG falhou: %s", e)
+
+            os.unlink(tmp_pdf)
         except Exception as e:
             erros.append(f"PDF: {e}")
             log.warning("  Erro ao extrair PDF: %s", e)
     else:
         log.info("  PDF: nao enviado")
 
-    # ── Processar DXF / DWG ───────────────────────────────────────────────────
-    if dxf and dxf.filename:
-        ext = Path(dxf.filename).suffix.lower()
-        try:
-            raw_dxf = await dxf.read()
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
-                tf.write(raw_dxf)
-                tmp_dxf = tf.name
-            dxf_data = extract_dxf(tmp_dxf)
-            os.unlink(tmp_dxf)
-            log.info("  DXF ok: %d layers, %d dims, %d textos",
-                     len(dxf_data["layers"]), len(dxf_data["dims"]), len(dxf_data["texts"]))
-        except Exception as e:
-            erros.append(f"DXF/DWG: {e}")
-            log.warning("  Erro ao extrair DXF/DWG: %s", e)
-    else:
-        log.info("  DXF/DWG: nao enviado")
+    _empty_dxf = {"ok": False, "layers": [], "dims": [], "blocks": {}, "texts": [], "errors": []}
+    dxf_data = _empty_dxf.copy()
 
-    # ── Classificar e extrair itens ──────────────────────────────────────────
+    # ── Classificar ──────────────────────────────────────────────────────────
     classificacao = classify_prancha(pdf_data, dxf_data)
-    if not pdf_data["ok"] and not dxf_data["ok"]:
+    if not pdf_data["ok"]:
         classificacao = "SEM_CONTEUDO"
 
     score = _score_prancha(pdf_data, dxf_data)
-    # Parser baseado em seções de texto — resolve bleed, duplicatas e soleiras
+
+    # ── Parser estrito: apenas tabelas CEA-QNT ────────────────────────────────
     pdf_items = parse_cea_qnt_from_text(pdf_data) if pdf_data["ok"] else []
     if pdf_data["ok"] and not pdf_items:
-        # Fallback para PDFs sem seções CEA-QNT detectáveis no texto
         pdf_items = parse_cea_qnt_tables(pdf_data)
-    # Tabelas especiais: QUADRO DE PORTAS, LUMINÁRIAS, COMUNICAÇÃO VISUAL
     if pdf_data["ok"]:
         seen_qa = {it.get("descricao", "") for it in pdf_items}
         special_items = parse_special_tables_from_text(pdf_data, seen_qa)
         if special_items:
             pdf_items = pdf_items + special_items
             log.info("  Tabelas especiais: +%d itens", len(special_items))
-    log.info("  Itens extraídos do PDF: %d", len(pdf_items))
+    log.info("  Itens QNT extraídos: %d", len(pdf_items))
 
-    precisa_ia = classificacao in ("IA_AUDITORIA", "IA_NECESSARIA", "SEM_CONTEUDO")
-
-    # ── Extração parcial (fallback para pranchas sem tabelas estruturadas) ───
+    # Sem extração parcial — somente tabelas estruturadas (evita lixo de texto livre)
     height_context: dict = {}
-    partial_items: list = []
 
-    has_quadro = bool(pdf_data.get("quadro_acabamentos"))
-    has_cea    = bool(pdf_data.get("cea_qnt_tables")) or bool(pdf_items)
-    # BUG-5: pranchas com QUADRO mas sem CEA-QNT são referências — skip partial
-    _skip_partial_quadro_only = has_quadro and not has_cea
-    # BUG-8: pranchas visuais (CVS, axo, layout) — skip partial
-    _skip_partial_visual = bool(_RE_VISUAL_PRANCHA.search(stem))
-
-    # BUG-7: só roda extract_partial se nenhum item CEA foi encontrado
-    if (pdf_data["ok"] and len(pdf_items) == 0
-            and not _skip_partial_quadro_only
-            and not _skip_partial_visual):
-        seen_descs = {it.get("descricao", "") for it in pdf_items}
-        partial_items, height_context = extract_partial_items_from_text(pdf_data, seen_descs)
-        log.info("  Extração parcial: %d itens aguardando, height_context=%s",
-                 len(partial_items), height_context)
-
-    # Combina: itens confirmados (com qty) primeiro, parciais (sem qty) depois
-    all_pdf_items = pdf_items + partial_items
-
-    log.info("  Classificacao: %s | score=%d | itens_confirmados=%d | itens_aguardando=%d | precisa_ia=%s",
-             classificacao, score, len(pdf_items), len(partial_items), precisa_ia)
+    log.info("  Classificacao: %s | score=%d | itens_confirmados=%d",
+             classificacao, score, len(pdf_items))
 
     # ── Montar resposta ──────────────────────────────────────────────────────
     itens_extraidos = [
@@ -222,84 +203,182 @@ async def extrair_codigo(
             "fonte": it.get("fonte", "PDF"),
             "pendencias": it.get("pendencias", []),
         }
-        for it in all_pdf_items
+        for it in pdf_items
     ]
 
-    dxf_counts = dxf_data.get("counts", {
-        "layers": len(dxf_data.get("layers", [])),
-        "dims":   len(dxf_data.get("dims", [])),
-        "blocks": len(dxf_data.get("blocks", {})),
-        "texts":  len(dxf_data.get("texts", [])),
-    })
-
     debug = {
-        # ── Status geral ────────────────────────────────────────────────────────
         "pdf_ok":       pdf_data["ok"],
-        "dxf_ok":       dxf_data["ok"],
         "image_enviada": bool(image and image.filename),
-        "pdf_fonte": "upload" if (pdf and pdf.filename) else ("disco" if pdf_data["ok"] else "nao_encontrado"),
-        "dxf_fonte": "upload" if (dxf and dxf.filename) else ("disco" if dxf_data["ok"] else "nao_encontrado"),
-
-        # ── Score de classificação ───────────────────────────────────────────────
+        "pdf_fonte": "upload" if (pdf and pdf.filename) else ("nao_encontrado"),
         "score":                    score,
-        "score_threshold_direto":   6,
-        "score_threshold_ia_auditoria": 3,
         "classificacao":            classificacao,
-
-        # ── Resumo PDF ───────────────────────────────────────────────────────────
         "pdf_n_raw_lines":          len(pdf_data.get("raw_text_lines", [])),
         "pdf_n_clean_lines":        len(pdf_data.get("text_lines", [])),
-        "pdf_n_noise_removed":      len(pdf_data.get("noise_removed", [])),
         "pdf_n_tables_cea_qnt":     len(pdf_data.get("cea_qnt_tables", [])),
         "pdf_n_quadro_acabamentos": len(pdf_data.get("quadro_acabamentos", [])),
         "pdf_n_measure_lines":      len(pdf_data.get("measure_lines", [])),
         "pdf_n_area_tags":          len(pdf_data.get("area_tags", [])),
-
-        # ── Resumo DXF ───────────────────────────────────────────────────────────
-        "dxf_n_layers":  dxf_counts["layers"],
-        "dxf_n_dims":    dxf_counts["dims"],
-        "dxf_n_blocks":  dxf_counts["blocks"],
-        "dxf_n_texts":   dxf_counts["texts"],
-
-        # ── Itens extraídos ──────────────────────────────────────────────────────
         "n_itens_confirmados": len(pdf_items),
-        "n_itens_aguardando":  len(partial_items),
+        "n_itens_aguardando":  0,
         "height_context":      height_context,
-
-        # ── Erros ────────────────────────────────────────────────────────────────
         "erros_pdf":            pdf_data.get("errors", []),
-        "erros_dxf":            dxf_data.get("errors", []),
         "erros_processamento":  erros,
-
-        # ── Dados completos para inspeção visual ─────────────────────────────────
         "pdf_raw_lines":     pdf_data.get("raw_text_lines", []),
         "pdf_clean_lines":   pdf_data.get("text_lines", []),
-        "pdf_noise_removed": pdf_data.get("noise_removed", []),   # [{"line": str, "motivo": str}]
+        "pdf_noise_removed": pdf_data.get("noise_removed", []),
         "pdf_measure_lines": pdf_data.get("measure_lines", []),
         "pdf_area_tags":     pdf_data.get("area_tags", []),
         "pdf_items_confirmados": pdf_items,
-        "pdf_items_parciais":    partial_items,
-
-        "dxf_all_layers": dxf_data.get("all_layers", dxf_data.get("layers", [])),
-        "dxf_all_dims":   dxf_data.get("all_dims",   dxf_data.get("dims", [])),
-        "dxf_all_blocks": dxf_data.get("all_blocks", dxf_data.get("blocks", {})),
-        "dxf_all_texts":  dxf_data.get("all_texts",  dxf_data.get("texts", [])),
+        "pdf_items_parciais":    [],
     }
 
     return JSONResponse({
         "stem": stem,
         "classificacao": classificacao,
-        "precisa_ia": precisa_ia,
+        "precisa_ia": False,
         "n_itens_extraidos": len(itens_extraidos),
         "itens_extraidos": itens_extraidos,
         "height_context": height_context,
+        "png_base64": png_b64,
         "fontes": {
             "pdf": pdf_data["ok"],
-            "dxf": dxf_data["ok"],
+            "dxf": False,
             "image": bool(image and image.filename),
         },
         "debug": debug,
         "processado_em": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+@app.post("/especialista")
+async def especialista(
+    image_0: Optional[UploadFile] = File(None),
+    image_1: Optional[UploadFile] = File(None),
+    image_2: Optional[UploadFile] = File(None),
+    image_3: Optional[UploadFile] = File(None),
+    image_4: Optional[UploadFile] = File(None),
+    context_json: str = Form(""),
+):
+    """
+    Análise especialista de um grupo de pranchas.
+    Recebe até 5 imagens + context_json com:
+      { grupo, secoes, checklist, pdf_tables }
+    checklist: [{cod, descricao, unidade, zona, vlrUnit, materialCliente, qdeReferencia, zerado}]
+    pdf_tables: [{stem, itens: [{descricao, quantidade, unidade, status}]}]
+    Retorna itens do checklist com quantidades preenchidas.
+    """
+    api_key = ANTHROPIC_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY nao configurado")
+
+    try:
+        context = json.loads(context_json) if context_json else {}
+    except Exception:
+        context = {}
+
+    grupo      = context.get("grupo", "G1")
+    secoes     = context.get("secoes", [])
+    checklist  = context.get("checklist", [])
+    pdf_tables = context.get("pdf_tables", [])
+
+    images_uploads = [u for u in [image_0, image_1, image_2, image_3, image_4] if u and u.filename]
+    log.info("[especialista] grupo=%s secoes=%s imagens=%d checklist=%d",
+             grupo, secoes, len(images_uploads), len(checklist))
+
+    images_b64 = []
+    for up in images_uploads:
+        raw = await up.read()
+        jpg = compress_to_jpeg(raw)
+        images_b64.append(base64.b64encode(jpg).decode())
+        log.info("  [especialista] %s → %dKB", up.filename, len(jpg) // 1024)
+
+    prompt = build_especialista_prompt(grupo, secoes, checklist, pdf_tables)
+
+    try:
+        raw_text, tokens_in, tokens_out, custo = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: call_claude_multi(prompt, images_b64, api_key)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao chamar Claude (especialista {grupo}): {e}")
+
+    raw_save_path = Path(BASE_DIR).parent / f"especialista_{grupo}_last_response.json"
+    try:
+        parsed = parse_ai_json(raw_text, save_path=raw_save_path)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return JSONResponse({
+        "grupo":       grupo,
+        "itens":       parsed.get("itens", []),
+        "prompt_sent": prompt,
+        "raw_output":  raw_text,
+        "metadata": {
+            "tokens_input":  tokens_in,
+            "tokens_output": tokens_out,
+            "custo_usd":     round(custo, 5),
+            "n_imagens":     len(images_b64),
+            "n_checklist":   len(checklist),
+        },
+    })
+
+
+@app.post("/auditar")
+async def auditar(
+    context_json: str = Form(""),
+):
+    """
+    Auditoria do orçamento consolidado vs totais esperados do XLSX.
+    Recebe context_json com:
+      { secao_totais: {seção: {total_calculado, n_itens, itens_aguardando}},
+        totais_xlsx:  {seção: total_esperado} }
+    Retorna flags de divergência por seção.
+    """
+    api_key = ANTHROPIC_KEY or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY nao configurado")
+
+    try:
+        context = json.loads(context_json) if context_json else {}
+    except Exception:
+        context = {}
+
+    secao_totais = context.get("secao_totais", {})
+    totais_xlsx  = context.get("totais_xlsx", {})
+
+    log.info("[auditar] %d seções calculadas, %d seções XLSX", len(secao_totais), len(totais_xlsx))
+
+    prompt = build_auditoria_prompt(secao_totais, totais_xlsx)
+
+    try:
+        raw_text, tokens_in, tokens_out, custo = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: call_claude_multi(prompt, [], api_key)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao chamar Claude (auditar): {e}")
+
+    raw_save_path = Path(BASE_DIR).parent / "auditoria_last_response.json"
+    try:
+        parsed = parse_ai_json(raw_text, save_path=raw_save_path)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return JSONResponse({
+        "total_calculado":    parsed.get("total_calculado", 0),
+        "total_esperado":     parsed.get("total_esperado", 0),
+        "delta_total":        parsed.get("delta_total", 0),
+        "delta_pct":          parsed.get("delta_pct", 0),
+        "secoes_ok":          parsed.get("secoes_ok", []),
+        "secoes_problema":    parsed.get("secoes_problema", []),
+        "itens_aguardando_total": parsed.get("itens_aguardando_total", 0),
+        "qualidade_geral":    parsed.get("qualidade_geral", ""),
+        "observacoes":        parsed.get("observacoes", ""),
+        "prompt_sent":        prompt,
+        "raw_output":         raw_text,
+        "metadata": {
+            "tokens_input":  tokens_in,
+            "tokens_output": tokens_out,
+            "custo_usd":     round(custo, 5),
+        },
     })
 
 

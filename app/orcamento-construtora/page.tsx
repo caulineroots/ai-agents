@@ -26,15 +26,15 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
-          <div className="bg-white rounded-2xl shadow border border-red-100 p-8 max-w-xl w-full space-y-4">
-            <h2 className="text-lg font-bold text-red-700">Erro ao renderizar</h2>
-            <pre className="text-xs text-red-600 bg-red-50 rounded p-4 overflow-auto whitespace-pre-wrap">
+        <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-8">
+          <div className="bg-zinc-900 rounded-2xl shadow border border-red-900/50 p-8 max-w-xl w-full space-y-4">
+            <h2 className="text-lg font-bold text-red-400">Erro ao renderizar</h2>
+            <pre className="text-xs text-red-400 bg-red-950/40 rounded p-4 overflow-auto whitespace-pre-wrap">
               {this.state.error.message}{'\n\n'}{this.state.error.stack?.slice(0, 600)}
             </pre>
             <button
               onClick={() => { try { localStorage.clear(); } catch {} window.location.reload(); }}
-              className="w-full py-2.5 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700"
+              className="w-full py-2.5 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-500"
             >
               Limpar sessão e recarregar
             </button>
@@ -97,51 +97,51 @@ function OrcamentoInner() {
   }, [handleImport]);
 
   return (
-    <div className="h-screen overflow-y-auto bg-gray-50 py-12 px-4">
+    <div className="h-screen overflow-y-auto bg-zinc-950 py-12 px-4">
       <div className={`mx-auto transition-all ${step === 4 ? 'w-full px-4' : 'max-w-3xl'}`}>
 
         {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Orçamento Construtora</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-2xl font-bold text-white">Orçamento Construtora</h1>
+            <p className="text-sm text-zinc-500 mt-0.5">
               Análise automática por IA do projeto executivo de fit-out
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             <Link
               href="/orcamento-construtora/aprender"
-              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-white text-purple-700 border-purple-200 hover:bg-purple-50"
+              className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-zinc-800 text-purple-400 border-zinc-700 hover:bg-zinc-700 transition-colors"
             >
               Banco de Nomes
             </Link>
-            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium cursor-pointer bg-white text-blue-600 border-blue-200 hover:bg-blue-50">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium cursor-pointer bg-zinc-800 text-blue-400 border-zinc-700 hover:bg-zinc-700 transition-colors">
               Importar
               <input type="file" accept=".json" className="hidden" onChange={handleImportWithRestore} />
             </label>
             {(folha || resultado || extractResults.length > 0) && (
-              <button onClick={exportSession} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-green-600 text-white border-green-600 hover:bg-green-700">
+              <button onClick={exportSession} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-green-600 text-white border-green-500 hover:bg-green-500 transition-colors">
                 Salvar sessão
               </button>
             )}
-            <button onClick={reset} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50">
+            <button onClick={reset} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border font-medium bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700 transition-colors">
               Limpar
             </button>
           </div>
         </div>
 
         {restoredAt && (
-          <div className="mb-4 flex items-center justify-between gap-3 text-xs bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5">
-            <span className="text-blue-700">
+          <div className="mb-4 flex items-center justify-between gap-3 text-xs bg-indigo-950/50 border border-indigo-800/60 rounded-lg px-4 py-2.5">
+            <span className="text-indigo-300">
               Sessão restaurada — {new Date(restoredAt).toLocaleString('pt-BR')}
             </span>
-            <button onClick={reset} className="text-blue-500 hover:text-blue-700 underline">Limpar</button>
+            <button onClick={reset} className="text-indigo-400 hover:text-indigo-200 underline">Limpar</button>
           </div>
         )}
 
         <Stepper current={step} accessible={accessible} onNavigate={setStep} />
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl p-8">
 
           {/* Step 1: Upload */}
           {step === 1 && (
@@ -197,7 +197,7 @@ function OrcamentoInner() {
           {step === 4 && folha && (
             <StepReview
               folha={folha}
-              imageBlobs={imageStore.get().filter((g) => extractResults.find((r) => r.stem === g.stem && r.precisa_ia)).map((g) => g.imageFile ?? new Blob())}
+              groups={imageStore.get().filter((g) => g.imageFile)}
               onDone={(updated) => {
                 setFolha(updated);
                 setResultado(calcularOrcamento(updated));

@@ -27,6 +27,11 @@ export const imageStore = {
 
   stems(): string[] { return _groups.map((g) => g.stem); },
 
+  setImageFile(stem: string, file: File) {
+    const g = _groups.find((g) => g.stem === stem);
+    if (g) g.imageFile = file;
+  },
+
   summary(): { stem: string; hasPdf: boolean; hasDxf: boolean; hasImage: boolean }[] {
     return _groups.map((g) => ({
       stem:     g.stem,
