@@ -40,17 +40,48 @@ interface IntentResult {
   resposta: string;
 }
 
-// ─── System prompt do Brain ───────────────────────────────────────────────────
+// ─── System prompt do Brain (gerado em runtime para datas corretas) ───────────
 
-const BRAIN_SYSTEM = `Você é o assistente pessoal de Roberto, sócio da Cauline Roots (startup de agentes de IA para marmoraria e marcenaria).
+function getBrainSystem(): string {
+  const DIAS_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const DIAS_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+
+  // Usa horário de Brasília (UTC-3)
+  const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hoje = agora.toISOString().slice(0, 10);
+  const diaSemanaHoje = agora.getDay(); // 0=dom, 1=seg, ..., 6=sab
+  const diaHojeNome = DIAS_PT[diaSemanaHoje];
+
+  // Calcula os próximos 7 dias com nome e data
+  const proximosDias = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(agora);
+    d.setDate(agora.getDate() + i + 1);
+    const iso = d.toISOString().slice(0, 10);
+    const diaSem = d.getDay();
+    return `${DIAS_CURTO[diaSem]} ${iso}  (${DIAS_PT[diaSem]})`;
+  }).join('\n');
+
+  return `Você é o assistente pessoal de Roberto, sócio da Cauline Roots (startup de agentes de IA para marmoraria e marcenaria).
 
 Seu papel: entender o que Roberto quer fazer e responder com um JSON contendo a ação e os dados extraídos da mensagem.
 
 ## Contexto do negócio
 - Cauline Roots desenvolve agentes de IA para marmoraria e marcenaria
 - Clientes/prospects: donos de marmoraria, marcenaria, construtoras
-- Projetos ativos: agente de orçamento de marmoraria, agente de orçamento de marcenaria/marcenaria, Celmar (construtora)
+- Projetos ativos: agente de orçamento de marmoraria, agente de orçamento de marcenaria, Celmar (construtora)
 - Sócios: Roberto (criativo, vendas, operação) e Kevin (investidor, dev)
+
+## Referência de datas (OBRIGATÓRIO usar essa tabela)
+Hoje: ${hoje} (${diaHojeNome})
+Próximos dias:
+${proximosDias}
+
+Regras de data:
+- "amanhã" = primeiro dia da tabela acima
+- "segunda", "segunda-feira" = a PRIMEIRA segunda-feira da tabela acima
+- "terça", "quarta", "quinta", "sexta", "sábado", "domingo" = o primeiro dia correspondente na tabela
+- "semana que vem" ou "próxima semana" = a segunda-feira 7+ dias à frente
+- Se não mencionar data, prazo = null
 
 ## Formato de resposta OBRIGATÓRIO
 Sempre responda APENAS com JSON válido, sem texto antes ou depois:
@@ -100,12 +131,12 @@ dados: {}
 Para qualquer outra mensagem: perguntas gerais, conversas, dúvidas sem ação de vault.
 resposta: resposta natural e útil.
 
-## Regras
-- Extraia datas relativas corretamente (hoje = ${new Date().toISOString().slice(0, 10)}, amanhã = dia seguinte, "semana que vem" = próxima segunda, etc.)
+## Regras gerais
 - Valores monetários: extraia apenas o número (ex: "R$500" → 500, "1.200 reais" → 1200)
 - Se a mensagem for ambígua, use intent=resposta_simples e pergunte para clarificar
 - A "resposta" deve ser curta (2-3 linhas máximo), confirmando a ação ou respondendo a pergunta
 - NUNCA use markdown (negrito, listas, etc.) na resposta — é para WhatsApp, texto puro`;
+}
 
 // ─── Parser de intent ─────────────────────────────────────────────────────────
 
@@ -121,7 +152,7 @@ async function detectarIntent(
   const res = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 1024,
-    system: BRAIN_SYSTEM,
+    system: getBrainSystem(),
     messages,
   });
 
