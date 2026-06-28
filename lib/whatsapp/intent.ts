@@ -105,7 +105,8 @@ Sempre responda APENAS com JSON válido, sem texto antes ou depois:
 ### criar_lead — dados: { nome, empresa, telefone, interesse }
 ### criar_projeto — dados: { nome, cliente, status, valor_estimado }
 ### criar_financeiro — dados: { descricao, valor, tipo, projeto }
-### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial", busca_titulo: string }
+### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial" | null, busca_titulo: string }
+Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM item. Para múltiplos, use resposta_simples pedindo um de cada vez. Se o tipo não for mencionado, deixe tipo = null.
 ### listar_* — dados conforme tipo
 
 ## Regras gerais
@@ -287,21 +288,24 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       const tipo = dados.tipo as string | null;
       const buscaTitulo = dados.busca_titulo as string | null;
 
-      if (!tipo || !buscaTitulo?.trim()) {
-        return 'Não entendi o que deletar. Tente: "deleta a tarefa [nome]"';
+      if (!buscaTitulo?.trim()) {
+        return 'Para deletar, diga o nome do item. Ex: "deleta a tarefa Ligar pro Marcio"';
       }
 
       const tiposValidos = ['task', 'lead', 'project', 'financial'];
-      if (!tiposValidos.includes(tipo)) {
-        return 'Tipo inválido. Use: tarefa, lead, projeto ou financeiro.';
-      }
 
-      const { data: matches, error } = await supabase
+      // Monta a query — se tipo não informado ou inválido, busca em todos os tipos
+      let query = supabase
         .from('vault_documents')
         .select('id, title, type, metadata')
-        .eq('type', tipo)
         .ilike('title', `%${buscaTitulo.trim()}%`)
         .limit(5);
+
+      if (tipo && tiposValidos.includes(tipo)) {
+        query = query.eq('type', tipo) as typeof query;
+      }
+
+      const { data: matches, error } = await query;
 
       if (error) {
         console.error('[intent] erro ao buscar para deletar:', error);
