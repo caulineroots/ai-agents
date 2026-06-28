@@ -1,0 +1,2 @@
+# Optional dependencies for Google Maps lead extraction
+selenium>=4.15.0

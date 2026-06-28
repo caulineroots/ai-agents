@@ -3,20 +3,20 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PranchaGroup }        from '@/lib/orcamento-construtora/image-store';
 import type { PranchaExtractResult, PranchaLeitura, TokenLog } from '@/hooks/useOrcamentoSession';
-import type { FolhaOrcamento, ItemOrcamento, Categoria, Unidade } from '@/lib/orcamento-construtora/types';
+import type { FolhaOrcamento, ItemOrcamento, Categoria, Unidade, IaReconcileResult } from '@/lib/orcamento-construtora/types';
 import { mergeFolhas } from '@/lib/orcamento-construtora/merge-folhas';
 import { AIDebugModal, type AIDebugEntry } from './AIDebugModal';
 import {
   routeByFilename,
   GRUPO_LABELS,
-  GRUPO_SECOES,
   type GrupoEspecialista,
 } from '@/lib/orcamento-construtora/prancha-router';
 import {
-  checklistDoGrupo,
+  XLSX_ITENS,
   XLSX_POR_COD,
   type XlsxItem,
-} from '@/lib/orcamento-construtora/xlsx-checklist';
+} from '@/lib/orcamento-construtora/xlsx-checklist-bln';
+import { categoriaFromGrupo } from '@/lib/orcamento-construtora/grupo-categoria';
 
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
@@ -75,6 +75,18 @@ interface GrupoResult {
   metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
 }
 
+// ─── Filtro de tabelas orçamentáveis ─────────────────────────────────────────
+
+const TABELAS_ORCAMENTO = /^(PAREDES|PINTURA|FORROS|PISOS|RODAPES|SOLEIRAS|TAPUMES|CERÂMICA|CERAMICA|RFID_|QNT_|LINEAR_|QNTD_|QUADRO|GERAL)/i;
+const RE_PORTA = /^(PA|PD|PM|PF|PV)\s*\d/i;
+
+function isOrcamentoItem(it: { tabela?: string; descricao?: string }): boolean {
+  const tab = it.tabela ?? '';
+  if (!tab || tab.toUpperCase() === 'GLOBAL_SCAN') return false;
+  if (TABELAS_ORCAMENTO.test(tab)) return true;
+  return RE_PORTA.test(it.descricao ?? '');
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let _idCounter = Date.now();
@@ -107,83 +119,7 @@ function mapRawItem(raw: RawIAItem): ItemOrcamento {
   } as ItemOrcamento & { cod?: string };
 }
 
-async function compressImageFile(file: File, maxDim = 2048, quality = 0.85): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      let { naturalWidth: w, naturalHeight: h } = img;
-      if (w > maxDim || h > maxDim) {
-        const ratio = Math.min(maxDim / w, maxDim / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width  = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { URL.revokeObjectURL(url); resolve(file); return; }
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { resolve(file); return; }
-          const stem = file.name.replace(/\.[^.]+$/, '');
-          resolve(new File([blob], `${stem}.jpg`, { type: 'image/jpeg' }));
-        },
-        'image/jpeg',
-        quality,
-      );
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`Falha ao carregar ${file.name}`)); };
-    img.src = url;
-  });
-}
-
-/** Divide um array em lotes balanceados (distribuição uniforme, não truncagem).
- *  splitEvenly([1..13], 5) → [[1..5],[6..9],[10..13]]  (5+4+4)
- *  splitEvenly([1..12], 5) → [[1..4],[5..8],[9..12]]   (4+4+4)
- *  splitEvenly([1..5],  5) → [[1..5]]                  (sem mudança)
- */
-function splitEvenly<T>(arr: T[], limit: number): T[][] {
-  if (arr.length === 0) return [[]];
-  const numBatches = Math.ceil(arr.length / limit);
-  const base       = Math.floor(arr.length / numBatches);
-  const remainder  = arr.length % numBatches;
-  const batches: T[][] = [];
-  let i = 0;
-  for (let b = 0; b < numBatches; b++) {
-    const size = base + (b < remainder ? 1 : 0);
-    batches.push(arr.slice(i, i + size));
-    i += size;
-  }
-  return batches;
-}
-
-const STATUS_RANK: Record<string, number> = { confirmado: 3, parcial: 2, aguardando: 1 };
-
-/** Merge de resultados de sub-chamadas do mesmo grupo.
- *  Para cada cod, mantém o item com maior status; em empate, o maior qty.
- */
-function mergeSubCallItems(subResults: RawIAItem[][]): RawIAItem[] {
-  const best = new Map<string, RawIAItem>();
-  for (const items of subResults) {
-    for (const item of items) {
-      const key = item.cod ?? item.descricao ?? '';
-      const existing = best.get(key);
-      if (!existing) { best.set(key, item); continue; }
-      const rankNew = STATUS_RANK[item.status ?? '']  ?? 0;
-      const rankOld = STATUS_RANK[existing.status ?? ''] ?? 0;
-      if (
-        rankNew > rankOld ||
-        (rankNew === rankOld && (item.quantidade ?? 0) > (existing.quantidade ?? 0))
-      ) {
-        best.set(key, item);
-      }
-    }
-  }
-  return [...best.values()];
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 // ─── Sub-componente: card de resultado de um grupo ────────────────────────────
@@ -201,8 +137,7 @@ function GrupoCard({
   onRerun?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const confirmados = (itens ?? []).filter((it) => it.status === 'confirmado' || (it.quantidade ?? 0) > 0);
-  const aguardando  = (itens ?? []).filter((it) => it.status === 'aguardando' && !(it.quantidade ?? 0));
+  const confirmados = (itens ?? []).filter((it) => (it.quantidade ?? 0) > 0);
 
   return (
     <div className={`border rounded-xl overflow-hidden ${erro ? 'border-red-800/60' : 'border-zinc-700'}`}>
@@ -221,10 +156,7 @@ function GrupoCard({
         </div>
         {!erro && itens && (
           <div className="flex items-center gap-2 flex-shrink-0 text-xs">
-            <span className="text-green-400 font-medium">{confirmados.length} ok</span>
-            {aguardando.length > 0 && (
-              <span className="text-orange-400">{aguardando.length} aguardando</span>
-            )}
+            <span className="text-green-400 font-medium">{confirmados.length} encontrados</span>
             <span className="text-zinc-600">{open ? '▲' : '▼'}</span>
           </div>
         )}
@@ -315,11 +247,65 @@ export function StepIA({
   onBatchResultsChange?: (results: BatchRecord[]) => void;
   onDone: (folha: FolhaOrcamento, orch: OrquestradorResult, leituraMap: PranchaLeitura[], logs: TokenLog[]) => void;
 }) {
+  // ── Types ─────────────────────────────────────────────────────────────────
+  interface VerificacaoResult {
+    qualidade_extracao: 'boa' | 'parcial' | 'insuficiente';
+    observacoes: string[];
+    categorias_possivelmente_ausentes: string[];
+    itens_provavelmente_em_tabela: string[];
+    metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
+  }
+
+  interface OrcarItem {
+    cod:             string;
+    descricao:       string;
+    quantidade:      number;
+    unidade:         string;
+    vlrUnit:         number;
+    vlrTotal:        number;
+    mat?:            number;
+    mo?:             number;
+    vlrMat?:         number;
+    vlrMo?:          number;
+    materialCliente?: boolean;
+    qdeReferencia?:  number | null;
+    confianca:       number;
+    fonte_pranchas:  string[];
+    status:          string;
+  }
+
+  interface OrcarResidual {
+    cod:      string;
+    descricao:string;
+    unidade:  string;
+  }
+
+  interface OrcarResponse {
+    itens:      OrcarItem[];
+    residual:   OrcarResidual[];
+    dedup_log:  { tabela: string; kept: string | null; dropped: string[]; gt: number | null }[];
+    linhas_pre_agregacao?: Array<{
+      cod?: string; descricao: string; quantidade: number; unidade: string;
+      tabela?: string; fonte_pranchas?: string[];
+    }>;
+    metadata:   { n_itens_entrada: number; n_apos_dedup: number; n_mapeados: number; n_residual: number };
+  }
+
+  interface AuditarResponse extends IaReconcileResult {
+    error?: string;
+  }
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [running,      setRunning]      = useState(false);
   const [progress,     setProgress]     = useState({ done: 0, total: 0 });
   const [grupoResults, setGrupoResults] = useState<GrupoResult[]>([]);
   const [allDone,      setAllDone]      = useState(false);
+  const [orcarResult,  setOrcarResult]  = useState<OrcarResponse | null>(null);
+  const [incluirSecaoA, setIncluirSecaoA] = useState(false);
+  const [incluirAuditoriaHaiku, setIncluirAuditoriaHaiku] = useState(true);
+
+  const [verificacao,  setVerificacao]  = useState<VerificacaoResult | null>(null);
+  const [verificando,  setVerificando]  = useState(false);
 
   const [finalFolha,   setFinalFolha]   = useState<FolhaOrcamento | null>(existingFinalFolha ?? null);
   const [tokenLogs,    setTokenLogs]    = useState<TokenLog[]>([]);
@@ -360,7 +346,7 @@ export function StepIA({
   const stems = groups.map((g) => g.stem);
   const grupoPorStems = routeByFilename(stems);
 
-  // ── Run all 6 specialist groups ───────────────────────────────────────────
+  // ── Run deterministic pipeline ───────────────────────────────────────────
 
   const runEspecialistas = useCallback(async () => {
     if (runRef.current) return;
@@ -374,271 +360,174 @@ export function StepIA({
     setGrupoResults([]);
     setAllDone(false);
     setFinalFolha(null);
+    setVerificacao(null);
+    setOrcarResult(null);
     setErro('');
-    // Calcula total de etapas (soma dos lotes balanceados de cada grupo)
-    const MAX_IMAGES = 5;
-    const totalSteps = GRUPOS.reduce((sum, g) => {
-      const n = (grupoPorStems[g] ?? []).length;
-      return sum + (n === 0 ? 1 : Math.ceil(n / MAX_IMAGES));
-    }, 0);
-    setProgress({ done: 0, total: totalSteps });
+
+    // Infere o nome da obra a partir dos stems (ex: "CEA-254-BLN-ARQ_R03-301" → "CEA-254-BLN")
+    const obraMatch = stems.map((s) => s.match(/^(CEA-\d+-[A-Z]+)/i)).find(Boolean);
+    const obraId    = obraMatch?.[1] ?? stems[0]?.split('-').slice(0, 3).join('-') ?? 'obra';
+
+    setProgress({ done: 0, total: 1 });
 
     try {
-      const allItems: Record<string, RawIAItem[]> = {};
+      // ── Pipeline determinístico: 1 chamada para todas as pranchas ─────────
+      const allPranchas = extractResults.map((er) => ({
+        stem:  er.stem,
+        items: (er.itens_extraidos ?? []).filter(isOrcamentoItem),
+      })).filter((p) => p.items.length > 0);
 
-      for (const grupo of GRUPOS) {
-        const grupoStems = grupoPorStems[grupo] ?? [];
-        const checklist  = checklistDoGrupo(grupo);
-        const secoes     = GRUPO_SECOES[grupo];
+      // Checklist completo (todos os grupos)
+      const fullChecklist = XLSX_ITENS.map((it: XlsxItem) => ({
+        cod:             it.cod,
+        descricao:       it.descricao,
+        unidade:         it.unidade,
+        zona:            it.zona,
+        secao:           it.secao,
+        mat:             it.mat,
+        mo:              it.mo,
+        vlrUnit:         it.vlrUnit,
+        materialCliente: it.materialCliente,
+        qdeReferencia:   it.qdeReferencia,
+        zerado:          it.zerado ?? false,
+      }));
 
-        // Coleta imagens e tabelas PDF de todas as pranchas do grupo
-        const allImages:    { stem: string; file: File }[] = [];
-        const allPdfTables: { stem: string; itens: object[] }[] = [];
+      const fd = new FormData();
+      fd.append('context_json', JSON.stringify({
+        obra:            obraId,
+        checklist:       fullChecklist,
+        pranchas:        allPranchas,
+        incluir_secao_a: incluirSecaoA,
+      }));
 
-        for (const stem of grupoStems) {
-          const g  = groups.find((g) => g.stem === stem);
-          const er = extractResults.find((r) => r.stem === stem);
-          if (g?.imageFile) allImages.push({ stem, file: g.imageFile });
-          if (er?.itens_extraidos?.length) {
-            allPdfTables.push({ stem, itens: er.itens_extraidos });
-          }
-        }
+      let orcarData: OrcarResponse | null = null;
+      let iaReconcile: IaReconcileResult | undefined;
 
-        // Divide em lotes balanceados (ex: 13 imagens → 5+4+4)
-        const batches    = splitEvenly(allImages, MAX_IMAGES);
-        const numBatches = batches.length;
-        const subResults: RawIAItem[][] = [];
-        let   mergedMeta = { tokens_input: 0, tokens_output: 0, custo_usd: 0 };
-        let   grupoErro  = '';
+      try {
+        const r    = await fetch('/api/orcamento-construtora/orcar', { method: 'POST', body: fd });
+        const data = await r.json() as OrcarResponse & { error?: string };
+        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
+        orcarData = data;
+        setOrcarResult(data);
+        addLog('Pipeline Determinístico', { tokens_input: 0, tokens_output: 0 });
 
-        for (let bi = 0; bi < numBatches; bi++) {
-          const batch      = batches[bi];
-          const batchStems = new Set(batch.map((b) => b.stem));
-
-          // Tabelas QNT apenas das pranchas deste lote
-          const batchPdfTables = allPdfTables.filter((t) => batchStems.has(t.stem));
-
-          const fd = new FormData();
-          for (let i = 0; i < batch.length; i++) {
-            const compressed = await compressImageFile(batch[i].file);
-            fd.append(`image_${i}`, compressed, compressed.name);
-          }
-          fd.append('context_json', JSON.stringify({
-            grupo,
-            secoes,
-            sub_chamada: numBatches > 1 ? `${bi + 1}/${numBatches}` : undefined,
-            checklist: checklist.map((it: XlsxItem) => ({
-              cod:             it.cod,
-              descricao:       it.descricao,
-              unidade:         it.unidade,
-              zona:            it.zona,
-              vlrUnit:         it.vlrUnit,
-              materialCliente: it.materialCliente,
-              qdeReferencia:   it.qdeReferencia,
-              zerado:          it.zerado ?? false,
-            })),
-            pdf_tables: batchPdfTables,
-          }));
-
-          const debugLabel = numBatches > 1
-            ? `Especialista ${grupo} (${bi + 1}/${numBatches}) — ${GRUPO_LABELS[grupo]}`
-            : `Especialista ${grupo} — ${GRUPO_LABELS[grupo]}`;
-
+        if (incluirAuditoriaHaiku && data.itens.length > 0) {
           try {
-            const r = await fetch('/api/orcamento-construtora/especialista', {
-              method: 'POST',
-              body: fd,
-            });
-            const data = await r.json() as {
-              itens?: RawIAItem[];
-              metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
-              prompt_sent?: string;
-              raw_output?: string;
-              error?: string;
+            const auditFd = new FormData();
+            auditFd.append('context_json', JSON.stringify({
+              obra:                   obraId,
+              checklist:              fullChecklist,
+              itens_deterministicos:  data.itens,
+              dedup_log:              data.dedup_log,
+              linhas_pre_agregacao:   data.linhas_pre_agregacao ?? [],
+            }));
+            const ar = await fetch('/api/orcamento-construtora/orcar-auditar', { method: 'POST', body: auditFd });
+            const auditData = await ar.json() as AuditarResponse;
+            if (!ar.ok) throw new Error(auditData.error ?? `HTTP ${ar.status}`);
+            iaReconcile = {
+              duplicatas:    auditData.duplicatas ?? [],
+              cods_revisados: auditData.cods_revisados ?? [],
+              observacoes:   auditData.observacoes ?? [],
+              metadata:      auditData.metadata,
             };
-
-            setDebugEntries((prev) => [...prev, {
-              label:  debugLabel,
-              prompt: data.prompt_sent ?? '(não disponível)',
-              output: data.raw_output  ?? '(não disponível)',
-            }]);
-
-            if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-
-            if (data.metadata) {
-              mergedMeta.tokens_input  += data.metadata.tokens_input;
-              mergedMeta.tokens_output += data.metadata.tokens_output;
-              mergedMeta.custo_usd     += data.metadata.custo_usd;
-            }
-            addLog(debugLabel, data.metadata ?? {});
-            subResults.push(data.itens ?? []);
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            grupoErro = (grupoErro ? grupoErro + '\n' : '') + `${debugLabel}: ${msg}`;
-            setErro((prev) => (prev ? prev + '\n' : '') + `${debugLabel}: ${msg}`);
-            subResults.push([]);
+            addLog('Auditoria Haiku (dedup)', {
+              tokens_input:  auditData.metadata?.tokens_input ?? 0,
+              tokens_output: auditData.metadata?.tokens_output ?? 0,
+            });
+          } catch (ae) {
+            const msg = ae instanceof Error ? ae.message : String(ae);
+            console.warn('[orcar-auditar]', msg);
           }
-
-          setProgress((p) => ({ ...p, done: p.done + 1 }));
         }
-
-        // Merge dos resultados de todos os lotes por prioridade de status
-        const itens = mergeSubCallItems(subResults);
-        allItems[grupo] = itens;
-
-        const grupoResult: GrupoResult = grupoErro && itens.length === 0
-          ? { grupo, itens: [], stems: grupoStems, erro: grupoErro }
-          : { grupo, itens, stems: grupoStems, metadata: mergedMeta };
-
-        setGrupoResults((prev) => [...prev, grupoResult]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErro(`Pipeline determinístico falhou: ${msg}`);
       }
 
-      // ── Montar FolhaOrcamento a partir dos resultados dos grupos ──────────
-      // Todos os itens do checklist respondidos pelos especialistas, desduplicados
-      const seenCods  = new Set<string>();
-      const allMapped: ItemOrcamento[] = [];
+      setProgress({ done: 1, total: 1 });
 
-      for (const grupo of GRUPOS) {
-        for (const raw of (allItems[grupo] ?? [])) {
-          const cod = raw.cod;
-          if (cod && seenCods.has(cod)) continue; // dedup por cod XLSX
-          if (cod) seenCods.add(cod);
-          // Enrich with XLSX data
-          const xlsxItem = cod ? XLSX_POR_COD[cod] : undefined;
-          allMapped.push(mapRawItem({
-            ...raw,
-            categoria: raw.categoria ?? xlsxItem?.secao as unknown as string ?? 'outro',
-          }));
+      // ── Synthetic grupo results for backward compat ───────────────────────
+      if (orcarData) {
+        const syntheticByGrupo: Record<string, RawIAItem[]> = {};
+        for (const it of orcarData.itens) {
+          const xlsxItem = XLSX_POR_COD[it.cod];
+          const grupo    = (xlsxItem as unknown as { grupo?: string })?.grupo ?? 'G1';
+          if (!syntheticByGrupo[grupo]) syntheticByGrupo[grupo] = [];
+          syntheticByGrupo[grupo].push({
+            cod:        it.cod,
+            descricao:  it.descricao,
+            quantidade: it.quantidade,
+            unidade:    it.unidade as RawIAItem['unidade'],
+            fonte:      'PDF',
+            status:     'confirmado',
+            confianca:  it.confianca,
+          });
         }
+        const syntheticResults: GrupoResult[] = GRUPOS.map((g) => ({
+          grupo: g,
+          itens: syntheticByGrupo[g] ?? [],
+          stems: grupoPorStems[g] ?? [],
+        }));
+        setGrupoResults(syntheticResults);
       }
+
+      // ── Montar FolhaOrcamento a partir dos itens determinísticos ──────────
+      const sugestaoPorCod = new Map(
+        (iaReconcile?.cods_revisados ?? []).map((c) => [c.cod, c]),
+      );
+
+      const allMapped: ItemOrcamento[] = (orcarData?.itens ?? []).map((it) => {
+        const xlsxItem = XLSX_POR_COD[it.cod];
+        const sug = sugestaoPorCod.get(it.cod);
+        const base = mapRawItem({
+          cod:        it.cod,
+          descricao:  it.descricao,
+          quantidade: it.quantidade,
+          unidade:    it.unidade as RawIAItem['unidade'],
+          fonte:      it.status === 'planilha' ? 'PDF' : 'PDF',
+          status:     it.status === 'planilha' ? 'confirmado' : 'confirmado',
+          confianca:  it.confianca,
+          categoria:  categoriaFromGrupo(xlsxItem?.grupo, it.descricao),
+        });
+        if (sug && sug.qty_sugerida > 0) {
+          (base as ItemOrcamento).iaSugestao = {
+            qty:       sug.qty_sugerida,
+            motivo:    sug.motivo,
+            confianca: sug.confianca,
+          };
+        }
+        (base as ItemOrcamento).cod = it.cod;
+        return base as ItemOrcamento;
+      });
 
       const folha: FolhaOrcamento = mergeFolhas([{
         projeto: 'fit-out',
         cliente: 'C&A',
         itens:   allMapped,
+        orcarMeta: orcarData ? {
+          residual:              orcarData.residual,
+          dedup_log:             orcarData.dedup_log,
+          iaReconcile,
+          linhas_pre_agregacao:  orcarData.linhas_pre_agregacao,
+        } : undefined,
       }]);
       setFinalFolha(folha);
       setAllDone(true);
+
+      // Verificação simplificada: sem aguardando no pipeline determinístico
+      // (mantida apenas para compatibilidade — não envia chamada de IA desnecessária)
     } finally {
       setRunning(false);
       runRef.current = false;
     }
-  }, [groups, extractResults, grupoPorStems, addLog]);
+  }, [groups, extractResults, grupoPorStems, addLog, incluirSecaoA, incluirAuditoriaHaiku]);
 
-  // ── Re-run a single failed grupo ─────────────────────────────────────────
-
-  const runSingleGrupo = useCallback(async (grupo: GrupoEspecialista) => {
-    if (runRef.current) return;
-    runRef.current = true;
-    setErro('');
-
-    const grupoStems = grupoPorStems[grupo] ?? [];
-    const checklist  = checklistDoGrupo(grupo);
-    const secoes     = GRUPO_SECOES[grupo];
-    const MAX_IMAGES = 5;
-
-    const allImages:    { stem: string; file: File }[] = [];
-    const allPdfTables: { stem: string; itens: object[] }[] = [];
-
-    for (const stem of grupoStems) {
-      const g  = groups.find((g) => g.stem === stem);
-      const er = extractResults.find((r) => r.stem === stem);
-      if (g?.imageFile) allImages.push({ stem, file: g.imageFile });
-      if (er?.itens_extraidos?.length) allPdfTables.push({ stem, itens: er.itens_extraidos });
-    }
-
-    const batches    = splitEvenly(allImages, MAX_IMAGES);
-    const numBatches = batches.length;
-    const subResults: RawIAItem[][] = [];
-    let   mergedMeta = { tokens_input: 0, tokens_output: 0, custo_usd: 0 };
-    let   grupoErro  = '';
-
-    for (let bi = 0; bi < numBatches; bi++) {
-      const batch      = batches[bi];
-      const batchStems = new Set(batch.map((b) => b.stem));
-      const batchPdfTables = allPdfTables.filter((t) => batchStems.has(t.stem));
-
-      const fd = new FormData();
-      for (let i = 0; i < batch.length; i++) {
-        const compressed = await compressImageFile(batch[i].file);
-        fd.append(`image_${i}`, compressed, compressed.name);
-      }
-      fd.append('context_json', JSON.stringify({
-        grupo, secoes,
-        sub_chamada: numBatches > 1 ? `${bi + 1}/${numBatches}` : undefined,
-        checklist: checklist.map((it: XlsxItem) => ({
-          cod: it.cod, descricao: it.descricao, unidade: it.unidade,
-          zona: it.zona, vlrUnit: it.vlrUnit, materialCliente: it.materialCliente,
-          qdeReferencia: it.qdeReferencia, zerado: it.zerado ?? false,
-        })),
-        pdf_tables: batchPdfTables,
-      }));
-
-      const debugLabel = numBatches > 1
-        ? `Especialista ${grupo} (${bi + 1}/${numBatches}) — ${GRUPO_LABELS[grupo]}`
-        : `Especialista ${grupo} — ${GRUPO_LABELS[grupo]}`;
-
-      try {
-        const r = await fetch('/api/orcamento-construtora/especialista', { method: 'POST', body: fd });
-        const data = await r.json() as {
-          itens?: RawIAItem[];
-          metadata?: { tokens_input: number; tokens_output: number; custo_usd: number };
-          prompt_sent?: string; raw_output?: string; error?: string;
-        };
-        setDebugEntries((prev) => [...prev, {
-          label: debugLabel,
-          prompt: data.prompt_sent ?? '(não disponível)',
-          output: data.raw_output  ?? '(não disponível)',
-        }]);
-        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-        if (data.metadata) {
-          mergedMeta.tokens_input  += data.metadata.tokens_input;
-          mergedMeta.tokens_output += data.metadata.tokens_output;
-          mergedMeta.custo_usd     += data.metadata.custo_usd;
-        }
-        addLog(debugLabel, data.metadata ?? {});
-        subResults.push(data.itens ?? []);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        grupoErro = (grupoErro ? grupoErro + '\n' : '') + `${debugLabel}: ${msg}`;
-        setErro(msg);
-        subResults.push([]);
-      }
-    }
-
-    const itens = mergeSubCallItems(subResults);
-    const newGrupoResult: GrupoResult = grupoErro && itens.length === 0
-      ? { grupo, itens: [], stems: grupoStems, erro: grupoErro }
-      : { grupo, itens, stems: grupoStems, metadata: mergedMeta };
-
-    // Replace this grupo's result and rebuild the folha
-    setGrupoResults((prev) => {
-      const updated = prev.map((gr) => gr.grupo === grupo ? newGrupoResult : gr);
-
-      // Rebuild FolhaOrcamento from all updated results
-      const seenCods  = new Set<string>();
-      const allMapped: ItemOrcamento[] = [];
-      for (const g of GRUPOS) {
-        const gr = updated.find((r) => r.grupo === g);
-        for (const raw of (gr?.itens ?? [])) {
-          const cod = raw.cod;
-          if (cod && seenCods.has(cod)) continue;
-          if (cod) seenCods.add(cod);
-          const xlsxItem = cod ? XLSX_POR_COD[cod] : undefined;
-          allMapped.push(mapRawItem({
-            ...raw,
-            categoria: raw.categoria ?? xlsxItem?.secao as unknown as string ?? 'outro',
-          }));
-        }
-      }
-      const folha = mergeFolhas([{ projeto: 'fit-out', cliente: 'C&A', itens: allMapped }]);
-      setFinalFolha(folha);
-
-      return updated;
-    });
-
-    runRef.current = false;
-  }, [groups, extractResults, grupoPorStems, addLog]);
+  // ── Re-run pipeline (replaces single-grupo re-run) ───────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const runSingleGrupo = useCallback((_grupo: GrupoEspecialista) => {
+    // Pipeline determinístico: re-roda o fluxo completo
+    runEspecialistas();
+  }, [runEspecialistas]);
 
   // ── Proceed to review ─────────────────────────────────────────────────────
 
@@ -663,11 +552,9 @@ export function StepIA({
     (s, l) => s + l.usage.input_tokens * 3 / 1_000_000 + l.usage.output_tokens * 15 / 1_000_000, 0,
   );
 
-  const totalItems   = grupoResults.reduce((s, gr) => s + gr.itens.length, 0);
-  const totalOk      = grupoResults.reduce(
-    (s, gr) => s + gr.itens.filter((it) => it.status === 'confirmado' || (it.quantidade ?? 0) > 0).length, 0
+  const totalOk = grupoResults.reduce(
+    (s, gr) => s + gr.itens.filter((it) => (it.quantidade ?? 0) > 0).length, 0
   );
-  const totalAguard  = totalItems - totalOk;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -684,9 +571,9 @@ export function StepIA({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-white">Passo 3 — Análise com IA</h2>
+          <h2 className="text-xl font-semibold text-white">Passo 3 — Mapeamento XLSX</h2>
           <p className="text-sm text-zinc-500 mt-1">
-            6 especialistas com checklist do XLSX. Itens não encontrados ficam aguardando revisão.
+            Pipeline determinístico: deduplica tabelas repetidas entre pranchas e mapeia para o checklist XLSX. Apenas itens encontrados aparecem.
           </p>
         </div>
         {debugEntries.length > 0 && (
@@ -739,6 +626,36 @@ export function StepIA({
         </div>
       </div>
 
+      {/* Toggle Seção A + Auditoria Haiku */}
+      {!allDone && !running && (
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-3 px-4 py-3 bg-zinc-800/40 border border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-800/60 transition-colors">
+            <input
+              type="checkbox"
+              checked={incluirSecaoA}
+              onChange={(e) => setIncluirSecaoA(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-800 text-indigo-500 focus:ring-indigo-500"
+            />
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Incluir custos indiretos (Seção A) da planilha Celmar</p>
+              <p className="text-xs text-zinc-500 mt-0.5">ART, seguro, engenheiro residente etc. — quantidades da coluna qdeReferencia</p>
+            </div>
+          </label>
+          <label className="flex items-center gap-3 px-4 py-3 bg-zinc-800/40 border border-zinc-700 rounded-xl cursor-pointer hover:bg-zinc-800/60 transition-colors">
+            <input
+              type="checkbox"
+              checked={incluirAuditoriaHaiku}
+              onChange={(e) => setIncluirAuditoriaHaiku(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-800 text-indigo-500 focus:ring-indigo-500"
+            />
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Incluir auditoria Haiku (duplicatas)</p>
+              <p className="text-xs text-zinc-500 mt-0.5">Sugere quantidades alternativas no Passo 5 — você decide no card</p>
+            </div>
+          </label>
+        </div>
+      )}
+
       {/* ─── Especialistas + Auditoria ────────────────────────────────────────── */}
       <div className={`border rounded-xl overflow-hidden ${
         allDone ? 'border-green-700/60' : running ? 'border-blue-700/60' : 'border-zinc-700'
@@ -754,14 +671,16 @@ export function StepIA({
           }
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-semibold ${allDone ? 'text-green-300' : running ? 'text-blue-300' : 'text-zinc-200'}`}>
-              Análise por Especialistas (G1–G6)
+              Pipeline Determinístico
             </p>
             <p className="text-xs text-zinc-500 mt-0.5">
               {running
-                ? `Especialista ${progress.done + 1}/${progress.total} em andamento…`
+                ? 'Dedup + mapeamento XLSX em andamento…'
+                : allDone && orcarResult
+                ? `${orcarResult.metadata.n_mapeados} itens mapeados · ${orcarResult.metadata.n_apos_dedup}/${orcarResult.metadata.n_itens_entrada} após dedup · ${orcarResult.metadata.n_residual} residual`
                 : allDone
-                ? `${totalItems} itens · ${totalOk} confirmados · ${totalAguard} aguardando`
-                : `6 chamadas de IA com checklist XLSX + tabelas QNT extraídas do PDF`}
+                ? `${totalOk} itens encontrados`
+                : '1 chamada determinística — dedup + MAPA_FIXO + Haiku fallback'}
             </p>
           </div>
           {!allDone && !running && (
@@ -835,68 +754,119 @@ export function StepIA({
         )}
       </div>
 
-      {/* ─── Revisão de Pendências ─────────────────────────────────────────────── */}
-      {allDone && (() => {
-        // Collect all aguardando items grouped by section
-        const pendMap = new Map<string, { cod: string; descricao: string; r?: string }[]>();
-        for (const gr of grupoResults) {
-          for (const it of gr.itens) {
-            if (it.status !== 'aguardando') continue;
-            const xlsxItem = it.cod ? XLSX_POR_COD[it.cod] : undefined;
-            const secao = xlsxItem ? String(xlsxItem.secao) : '?';
-            if (!pendMap.has(secao)) pendMap.set(secao, []);
-            pendMap.get(secao)!.push({ cod: it.cod ?? '', descricao: it.descricao ?? '', r: it.r });
-          }
-        }
-        const totalPend = [...pendMap.values()].reduce((s, v) => s + v.length, 0);
-        const secoes = [...pendMap.entries()].sort(([a], [b]) => {
-          const na = parseFloat(a); const nb = parseFloat(b);
-          return isNaN(na) || isNaN(nb) ? a.localeCompare(b) : na - nb;
-        });
 
-        return (
-          <div className={`border rounded-xl overflow-hidden ${totalPend > 0 ? 'border-amber-700/60' : 'border-green-700/60'}`}>
-            <div className={`px-4 py-3 flex items-center gap-3 ${totalPend > 0 ? 'bg-amber-950/30' : 'bg-green-950/30'}`}>
-              <span className={`font-bold text-sm flex-shrink-0 ${totalPend > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                {totalPend > 0 ? '⚠' : '✓'}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold ${totalPend > 0 ? 'text-amber-300' : 'text-green-300'}`}>
-                  Revisão de Pendências
-                </p>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  {totalPend > 0
-                    ? `${totalPend} ${totalPend === 1 ? 'item aguardando' : 'itens aguardando'} quantificação manual`
-                    : 'Todos os itens foram quantificados'}
-                </p>
-              </div>
+      {/* ─── Verificação de Completude ────────────────────────────────────── */}
+      {(verificando || verificacao) && (
+        <div className={`border rounded-xl overflow-hidden ${
+          verificando ? 'border-zinc-600' :
+          verificacao?.qualidade_extracao === 'boa' ? 'border-green-700/60' :
+          verificacao?.qualidade_extracao === 'insuficiente' ? 'border-red-700/60' :
+          'border-blue-700/60'
+        }`}>
+          <div className={`px-4 py-3 flex items-center gap-3 ${
+            verificando ? 'bg-zinc-800/60' :
+            verificacao?.qualidade_extracao === 'boa' ? 'bg-green-950/30' :
+            verificacao?.qualidade_extracao === 'insuficiente' ? 'bg-red-950/30' :
+            'bg-blue-950/30'
+          }`}>
+            {verificando
+              ? <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              : <span className={`font-bold text-sm flex-shrink-0 ${
+                  verificacao?.qualidade_extracao === 'boa' ? 'text-green-400' :
+                  verificacao?.qualidade_extracao === 'insuficiente' ? 'text-red-400' : 'text-blue-400'
+                }`}>
+                  {verificacao?.qualidade_extracao === 'boa' ? '✓' : verificacao?.qualidade_extracao === 'insuficiente' ? '✕' : '⚠'}
+                </span>
+            }
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-semibold ${
+                verificando ? 'text-zinc-300' :
+                verificacao?.qualidade_extracao === 'boa' ? 'text-green-300' :
+                verificacao?.qualidade_extracao === 'insuficiente' ? 'text-red-300' : 'text-blue-300'
+              }`}>
+                Verificação de Completude
+              </p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {verificando
+                  ? 'Haiku verificando se todas as tabelas foram capturadas…'
+                  : `Qualidade: ${verificacao?.qualidade_extracao ?? '—'}`}
+              </p>
             </div>
-
-            {totalPend > 0 && (
-              <div className="px-4 py-3 border-t border-zinc-700 flex flex-col gap-3">
-                {secoes.map(([secao, itens]) => (
-                  <div key={secao}>
-                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">
-                      Seção {secao} — {itens.length} {itens.length === 1 ? 'item' : 'itens'}
-                    </p>
-                    <div className="flex flex-col gap-1">
-                      {itens.map((it) => (
-                        <div key={it.cod} className="bg-amber-950/20 border border-amber-800/40 rounded-lg px-3 py-2 text-xs">
-                          <span className="font-mono text-amber-400 mr-2">[{it.cod}]</span>
-                          <span className="text-zinc-300">{it.descricao}</span>
-                          {it.r && (
-                            <span className="ml-2 text-zinc-500 italic">— {it.r}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {verificacao?.metadata && (
+              <span className="text-xs text-zinc-600 flex-shrink-0">
+                {verificacao.metadata.tokens_input + verificacao.metadata.tokens_output} tokens
+              </span>
             )}
           </div>
-        );
-      })()}
+
+          {verificacao && (verificacao.observacoes.length > 0 || verificacao.categorias_possivelmente_ausentes.length > 0) && (
+            <div className="px-4 py-3 border-t border-zinc-700 flex flex-col gap-3">
+              {verificacao.observacoes.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Observações</p>
+                  <div className="flex flex-col gap-1">
+                    {verificacao.observacoes.map((obs, i) => (
+                      <div key={i} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300">
+                        {obs}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {verificacao.categorias_possivelmente_ausentes.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">Categorias possivelmente ausentes</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {verificacao.categorias_possivelmente_ausentes.map((cat) => (
+                      <span key={cat} className="px-2 py-0.5 bg-amber-950/30 border border-amber-700/40 rounded text-xs text-amber-300 font-mono">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Itens residuais (sem cobertura determinística) ─────────────────── */}
+      {orcarResult && orcarResult.residual.length > 0 && (
+        <div className="border border-amber-700/50 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-amber-950/30 flex items-center gap-3">
+            <span className="text-amber-400 font-bold text-sm flex-shrink-0">⚠</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-300">
+                Itens sem cobertura — revisar manualmente
+              </p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {orcarResult.residual.length} itens do checklist não foram encontrados nas tabelas PDF.
+                Preencha as quantidades na planilha final.
+              </p>
+            </div>
+          </div>
+          <div className="px-4 py-2 max-h-40 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-zinc-500 border-b border-zinc-700">
+                  <th className="text-left py-1 pr-3 font-medium">Cód</th>
+                  <th className="text-left py-1 font-medium">Descrição</th>
+                  <th className="text-right py-1 pl-3 font-medium">Un</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orcarResult.residual.map((it) => (
+                  <tr key={it.cod} className="border-b border-zinc-800/60">
+                    <td className="py-1 pr-3 font-mono text-amber-400">{it.cod}</td>
+                    <td className="py-1 text-zinc-300">{it.descricao}</td>
+                    <td className="py-1 pl-3 text-right text-zinc-500">{it.unidade}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Erro */}
       {erro && (
@@ -913,12 +883,7 @@ export function StepIA({
           <div className="flex gap-4 text-xs text-zinc-400 flex-wrap">
             <span>{totalTokens.toLocaleString('pt-BR')} tokens</span>
             <span className="font-semibold text-zinc-200">${totalCusto.toFixed(4)} USD</span>
-            <span>{finalFolha.itens.length} itens identificados</span>
-            {totalAguard > 0 && (
-              <span className="text-amber-400">
-                {totalAguard} aguardando revisão
-              </span>
-            )}
+            <span>{finalFolha.itens.length} itens encontrados</span>
           </div>
           <button
             onClick={handleDone}

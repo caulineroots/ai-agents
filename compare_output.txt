@@ -1,0 +1,127 @@
+﻿Itens no gabarito (Planilha Civil): 226
+Itens na proposta (1¬ Proposta):    226
+
+=== DIFERENÃAS DE QUANTIDADE (Planilha Civil vs 1¬ Proposta) ===
+  COD      UN      QDE_REF  QDE_PROP    DELTA | DESCRIÃ├O
+  -----------------------------------------------------------------------------------------------
+  1.3      dia        0.00      1.00    +1.00 | Topografia (5 visitas) (zerado no ref)
+  2.1      m▓        99.00      0.00   -99.00 | Tapume em placas de divis¾ria tipo Eucatex es ** ZERADO NA PROP **
+  3.3      mÛs        2.50      3.00    +0.50 | Retirada peri¾dica de entulhos e caþamba ( lo
+  4.1      mÛs        2.50      3.00    +0.50 | Engenheiro residente - full time
+  4.2      mÛs        2.50      3.00    +0.50 | TÚcnico de seguranþa - full time
+  4.5      mÛs        2.50      3.00    +0.50 | Limpeza permanente da obra (2 operßrios)
+  8.4      vb.        1.00      0.00    -1.00 | AdequaþÒo de escada / mezanino / guarda corpo ** ZERADO NA PROP **
+  8.5      m          0.00     19.00   +19.00 | Guarda corpo de ferro com pintura de fundo pa (zerado no ref)
+  8.8      vb.        0.00      1.00    +1.00 | Estrutura metßlica auxiliar para septo de Ar  (zerado no ref)
+  8.14     unid       0.00      1.00    +1.00 | Porta de ferro - C. Mßquina (zerado no ref)
+  9.4      vb.        0.00      1.00    +1.00 | Bases em concreto para equipamentos (ar condi (zerado no ref)
+  9.5      m▓         7.81    230.00  +222.19 | Alvenaria em tijolo/bloco de concreto
+  9.7      m▓         0.00    460.00  +460.00 | Chapisco e emboþo (zerado no ref)
+  9.12     vb.        0.00      1.00    +1.00 | FuraþÒo mecÔnica de lajes para Esgotos e tubu (zerado no ref)
+  9.13     vb.        0.00      1.00    +1.00 | Arremates gerais (zerado no ref)
+  12.1     m▓       551.00    672.00  +121.00 | PAREDE EM PLACAS DE GESSO STD - 1 face - aces
+  12.2     m▓        89.00    274.00  +185.00 | PAREDE EM PLACAS DE GESSO STD - 2 faces - ace
+  12.4     m▓         0.00     98.00   +98.00 | PAREDE EM PLACAS DE GESSO RU - 2 faces - aces (zerado no ref)
+  12.6     m▓        19.00     15.00    -4.00 | PAREDE EM PLACAS DE GESSO RF - 2 faces - aces
+  12.7     vb         0.00      1.00    +1.00 | Reforþo em cedrinho para paredes (zerado no ref)
+  12.9     m▓       135.22   1457.44 +1322.22 | EXECUÃ├O DE FORRO DE GESSO FORRO GYPSUM LISO 
+  12.12    und        0.00    176.00  +176.00 | Abertura no forro de gesso para luminßrias ,  (zerado no ref)
+  13.1     m▓        11.00     30.00   +19.00 | Fecham. compartimentos: divis¾rias, ref. sist
+  13.2     unid       6.00     10.00    +4.00 | Sanitßrio: porta 0.60x1.65 - divis¾ria eucate
+  13.3     unid       6.00      3.00    -3.00 | Porta para divis¾ria eucatex com maþaneta tip
+  14.1     m▓         0.00   1024.98 +1024.98 | Assentamento de piso vinÝlico salÒo de vendas (zerado no ref)
+  14.2     m▓         0.00   1024.98 +1024.98 | AplicaþÒo de autonivelante salÒo de vendas/pr (zerado no ref)
+  14.5     ml         0.00    130.84  +130.84 |  (zerado no ref)
+  14.6     vb         8.00     16.00    +8.00 | Piso tßtil (escada rolante e escada fixa) - M
+  14.8     ml         3.80     11.40    +7.60 | Soleira em granito - Mat. + M.O. (Branco Cear
+  14.11    m▓         0.00    361.00  +361.00 | AplicaþÒo de piso cerÔmico c/ fornecimento de (zerado no ref)
+  14.13    m         44.45     42.50    -1.95 | RodapÚ de madeira h=7cm
+  14.14    ml       140.27    140.39    +0.12 | RodapÚ de madeira h=20cm
+  14.15    pþ         0.00    108.00  +108.00 | Montagem de estante modular metßlica - fornec (zerado no ref)
+  14.19    m          0.00      5.88    +5.88 | Soleira em granito - Mat. + M.O. (Cinza Andor (zerado no ref)
+  15.2     m          0.00     23.00   +23.00 | Perfil de alumÝnio branco 1/2" E 1/16" meia a (zerado no ref)
+  17.2     unid       2.00      4.00    +2.00 | Cuba de embutir de louþa oval
+  18.1     m▓         0.00     39.61   +39.61 | Ep¾xi sobre cimentado - Mat. + M.O. - ßreas t (zerado no ref)
+  18.2     vb.        0.00      1.00    +1.00 | Pintura esmalte cor amarela - Mat. + M.O. - b (zerado no ref)
+  18.3     m▓         0.00   1153.00 +1153.00 | Emassamento e pintura acrÝlica - branco gelo  (zerado no ref)
+  18.4     m▓         0.00     60.00   +60.00 | Emassamento e pintura acrÝlica - branco neve  (zerado no ref)
+  18.5     m▓         0.00    708.00  +708.00 | Emassamento e pintura acrÝlica - branco gelo  (zerado no ref)
+  18.8     m▓         0.00     15.00   +15.00 | Emassamento e pintura Lßtex PVA COR DI┴RIO DE (zerado no ref)
+  18.10    m▓       322.00   1044.00  +722.00 | Emassamento e pintura Lßtex PVA branco neve f
+  18.11    m▓       355.00    408.00   +53.00 | Emassamento e pintura Lßtex branco neve fosco
+  18.12    m▓         1.00      8.60    +7.60 | Emassamento e pintura Lßtex PVA COR DI┴RIO DE
+  18.15    m▓       625.47      0.00  -625.47 | Pintura de todas as infras e estruturas na br ** ZERADO NA PROP **
+  20.2     unid       3.00      2.00    -1.00 | Porta de madeira completa (0,72x2,10m) folhad
+  20.3     unid       7.00      6.00    -1.00 | Porta de madeira completa (0,82x2,10m) folhad
+  20.6     unid       0.00      2.00    +2.00 | Mola para porta - Mat. + M.O. (zerado no ref)
+  20.7     unid       0.00      1.00    +1.00 | Tetra-chave - Mat. + M.O. (zerado no ref)
+  20.8     unid       0.00      4.00    +4.00 | Prendedor de porta - Mat. + M.O. (zerado no ref)
+  21.4     m          0.00     10.00   +10.00 | RÚguas para uniÒo de painÚis - Mat. + M.O. (zerado no ref)
+  21.6     unid       0.00      3.00    +3.00 | Revestimento de colunas ┴rea vendas padrÒo ┴r (zerado no ref)
+  21.10    unid       0.00      1.00    +1.00 | Porta completa simples ┴rtico TX 0.80m  - Mat (zerado no ref)
+  21.14    unid       0.00      3.00    +3.00 | Caixa para hidrantes - Mat. + M.O. (zerado no ref)
+  21.15    unid       0.00      3.00    +3.00 | Vidro temperado hidrante c/ ferragens - Mat.  (zerado no ref)
+  21.16    unid       0.00      1.00    +1.00 | Arquibancada: TABLADO FIXO EM MDP BRANCO 18mm (zerado no ref)
+  21.18    unid       0.00      2.00    +2.00 | Tubo aþo inox 2" para alimentaþÒo caixa - Mat (zerado no ref)
+  21.19    m▓         0.00      8.00    +8.00 | Estrado com laminado branco para vitrine  - M (zerado no ref)
+  21.20    m▓         0.00      6.30    +6.30 | Estrutura metßlica em tubo de ferro metalon p (zerado no ref)
+  21.21    unid       0.00      6.00    +6.00 | Fixadores de teto - Mat. + M.O. (zerado no ref)
+  22.1     m▓        50.00     42.00    -8.00 | revestimento em laminado formica artico l166 
+  22.2     m▓         0.00     25.00   +25.00 | revestimento em laminado formica gelo l106 tx (zerado no ref)
+  22.3     m▓       171.00    243.00   +72.00 | revestimento em laminado formica branco l120t
+  22.5     m▓         0.00     30.00   +30.00 | revestimento em laminado formica prattan l151 (zerado no ref)
+  22.9     unid       0.00     40.00   +40.00 | coluna simples (zerado no ref)
+  22.10    unid       0.00     30.00   +30.00 | rÚgua para uniÒo de painÚis (zerado no ref)
+  22.11    unid       0.00     30.00   +30.00 | travessa (zerado no ref)
+  22.12    unid       0.00     30.00   +30.00 | frontal (zerado no ref)
+  22.13    unid       0.00     50.00   +50.00 | suporte "l" para lateral de provador (zerado no ref)
+  22.14    m          0.00     99.30   +99.30 | rodapÚ em mdf branco 10mm x 5,0cm (zerado no ref)
+  22.15    m          0.00     43.70   +43.70 | rodapÚ em f¾rmica pratan 10cm (zerado no ref)
+  22.18    unid      21.00     25.00    +4.00 | Espelho 4mm incolor Guardian class com cava p
+  22.19    unid      21.00     25.00    +4.00 | Chassis para espelhos - cabine provador
+  22.25    unid       1.00      2.00    +1.00 | porta provador famÝlia - com dobradiþa, trinc
+  22.26    unid       0.00      1.00    +1.00 | Porta de correr provador (zerado no ref)
+  23.4     m▓         0.00     55.68   +55.68 | Revestimento em ACM Branco Brilho (zerado no ref)
+  23.5     m▓        31.00      0.00   -31.00 | Revestimento em formica ** ZERADO NA PROP **
+  25.1     m▓         0.00    158.00  +158.00 | PROTEÃ├O ELETROMAGN╔TICA EM MANTA ALUMINIZADA (zerado no ref)
+  25.2                0.00     10.00   +10.00 |  (zerado no ref)
+  25.3                0.00     10.73   +10.73 |  (zerado no ref)
+  25.4                0.00     16.21   +16.21 |  (zerado no ref)
+  25.5                0.00      5.05    +5.05 |  (zerado no ref)
+  25.7                0.00     10.00   +10.00 |  (zerado no ref)
+
+  Total com diferenþa de QDE: 85
+
+=== ITENS SEM PREÃO NA PROPOSTA (total=0 mas QDE ref > 0) ===
+  2.1      m▓    QDE_ref=    99 | Tapume em placas de divis¾ria tipo Eucatex estruturado com pontal
+  8.4      vb.   QDE_ref=     1 | AdequaþÒo de escada / mezanino / guarda corpo existente
+  18.15    m▓    QDE_ref=625.47 | Pintura de todas as infras e estruturas na branco neve forro - Ma
+  23.5     m▓    QDE_ref=    31 | Revestimento em formica
+  23.10    unid  QDE_ref=     1 | Porta de enrolar - fornecimento C&A
+
+  Total sem preþo: 5
+
+=== TOTAIS POR SEÃ├O ===
+  SEÃ├O                                                    GABARITO       PROPOSTA           DELTA
+  ----------------------------------------------------------------------------------------------------
+  ADAPTAÃ├O E REFORMA DO PR╔DIO                                0.00      32,810.00      +32,810.00
+  ADMINISTRAÃ├O, MOBILIZAÃ├O E LIMPEZA DA OBRA                 0.00     217,190.00     +217,190.00
+  ALVENARIA (PARED.DIVISËRIAS, ETC.)                           0.00      70,471.85      +70,471.85
+  ESCADAS/ESTRUTURAS MET┴LICAS AUX                             0.00      17,688.30      +17,688.30
+  ESQUADRIAS E VIDROS ┴REA ADM.                                0.00      36,487.34      +36,487.34
+  FACHADAS / ENTRADA LOJA / VITRIN                             0.00      74,857.00      +74,857.00
+  FORRO ┴REA DE VENDAS                                         0.00     368,106.77     +368,106.77
+  IMPEAB/TELHADO/REV.EXT/CANTEIRO                              0.00           0.00           +0.00
+  LEVANTAMENTO TOPOGRAFICO                                     0.00       2,420.00       +2,420.00
+  LIGAÃ├O PROVISËRIA INSTALAÃıES ELETRICAS                     0.00      11,400.00      +11,400.00
+  MEZANINOS COM ESCADA DE ACESSO                               0.00           0.00           +0.00
+  MËVEIS E EQUIPTOS ┴REA ADM.                                  0.00      30,698.86      +30,698.86
+  PAIN╔IS E FERRAGENS                                          0.00      41,678.41      +41,678.41
+  PAIN╔IS FERRAGENS E ESPELHOS PROVADORES                      0.00     453,244.40     +453,244.40
+  PINTURAS DE FORRO/PAREDES                                    0.00      66,086.45      +66,086.45
+  PISO DA ┴REA ADM/RESERVA                                     0.00      80,165.87      +80,165.87
+  PISO ┴REA DE VENDAS                                          0.00      80,102.35      +80,102.35
+  REVESTIMENTOS DE PAREDE                                      0.00      24,039.05      +24,039.05
+  SERVICOS GERAIS (CËPIAS, ETC.)                               0.00       3,400.00       +3,400.00
+  ====================================================================================================
+  TOTAL GERAL                                                  0.00   1,610,846.65   +1,610,846.65

@@ -17,9 +17,8 @@ if (typeof document === 'undefined') {
   };
 }
 
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/build/pdf.mjs';
 
-// Aponta para o arquivo do worker do pdfjs (já está em /public)
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 export type WorkerInMessage = {
@@ -32,23 +31,38 @@ export type WorkerOutMessage =
   | { type: 'done'; buffers: ArrayBuffer[]; texts: string[] }
   | { type: 'error'; message: string };
 
+function workerLog(msg: string, extra?: Record<string, unknown>) {
+  const line = `[marmoraria-worker] ${msg}`;
+  if (extra) console.log(line, extra);
+  else console.log(line);
+}
+
 self.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
   const { pdfData, selectedPages } = e.data;
+  workerLog('message received', {
+    pdfBytes: pdfData.byteLength,
+    pages: selectedPages.length,
+    indices: selectedPages,
+  });
 
   try {
+    workerLog('opening PDF document…');
     const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+    workerLog('PDF open OK', { numPages: pdf.numPages });
     const total = selectedPages.length;
     const buffers: ArrayBuffer[] = [];
     const texts: string[] = [];
 
     for (let j = 0; j < total; j++) {
+      const pageIdx = selectedPages[j];
+      workerLog(`rendering page ${j + 1}/${total}`, { pdfPage: pageIdx + 1 });
       (self as unknown as Worker).postMessage({
         type: 'progress',
         current: j + 1,
         total,
       } satisfies WorkerOutMessage);
 
-      const page = await pdf.getPage(selectedPages[j] + 1);
+      const page = await pdf.getPage(pageIdx + 1);
 
       // Extrai texto da página
       try {
@@ -74,12 +88,20 @@ self.onmessage = async (e: MessageEvent<WorkerInMessage>) => {
       buffers.push(buffer);
     }
 
+    workerLog('conversion complete', {
+      images: buffers.length,
+      totalBytes: buffers.reduce((s, b) => s + b.byteLength, 0),
+      textLayers: texts.filter((t) => t.length > 0).length,
+    });
     // Transfere os ArrayBuffers (zero-copy) de volta para a main thread
     (self as unknown as Worker).postMessage(
       { type: 'done', buffers, texts } satisfies WorkerOutMessage,
       buffers,
     );
   } catch (err) {
+    workerLog('conversion FAILED', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     (self as unknown as Worker).postMessage({
       type: 'error',
       message: err instanceof Error ? err.message : 'Erro desconhecido na conversão',

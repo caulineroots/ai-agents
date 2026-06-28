@@ -52,3 +52,7 @@ uploads/
 
 # dados pessoais / memória do agente
 brain/
+
+# maps lead extractor (runtime DB/exports only — city lists are versioned)
+data/maps_leads.db
+data/maps_exports/

@@ -38,15 +38,24 @@ export interface PranchaExtractResult {
   precisa_ia: boolean;
   n_itens_extraidos: number;
   itens_extraidos?: Array<{
-    descricao?: string;
-    quantidade?: number;
-    unidade?: string;
-    ambiente?: string;
-    fonte?: string;
-    status?: string;
-    categoria?: string;
-    pendencias?: string[];
+    descricao?:          string;
+    quantidade?:         number;
+    unidade?:            string;
+    ambiente?:           string;
+    fonte?:              string;
+    status?:             string;
+    categoria?:          string;
+    pendencias?:         string[];
+    tabela?:             string;
+    grand_total_tabela?: number | null;
     [key: string]: unknown;
+  }>;
+  /** Itens classificados pelo Haiku em categorias semânticas padronizadas */
+  itens_normalizados?: Array<{
+    categoria: string;
+    original: string;
+    quantidade: number;
+    unidade: string;
   }>;
   /** Cotas de altura extraídas do texto do PDF: {ceram: 140, pint: 110, forro: 250} */
   height_context?: Record<string, number>;

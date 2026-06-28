@@ -55,14 +55,17 @@ def call_claude(
     img_b64: "str | None",
     api_key: str,
     max_tokens: int = 16000,
+    model: "str | None" = None,
 ) -> tuple[str, int, int, float]:
     """
     Envia prompt (com imagem opcional) para Claude.
     Retorna (raw_text, tokens_input, tokens_output, custo_usd).
+    Passa model=None para usar o modelo padrão (MODEL do config).
     """
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
+    _model = model or MODEL
 
     if img_b64:
         content = [
@@ -76,7 +79,7 @@ def call_claude(
         content = [{"type": "text", "text": prompt}]
 
     response = client.messages.create(
-        model=MODEL,
+        model=_model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": content}],
     )
@@ -154,6 +157,33 @@ def parse_ai_json(raw_text: str, save_path: Path | None = None) -> dict:
                 log.warning("  JSON reconstruido por contagem de chaves")
             except Exception:
                 pass
+
+    # Tentativa 5: sanitiza aspas não-escapadas dentro de strings JSON
+    # (ex: "descricao": "Cuba de inox â?" copa" — AI às vezes inclui " literal em valores)
+    if not parsed:
+        try:
+            # Encontra strings JSON e escapa aspas internas não-escapadas
+            def _fix_unescaped_quotes(m_str: "re.Match") -> str:
+                key = m_str.group(1)       # aspas de abertura
+                val = m_str.group(2)       # conteúdo interno (pode ter " não-escapadas)
+                close = m_str.group(3)     # aspas de fechamento
+                fixed = val.replace('"', '\\"')
+                return key + fixed + close
+
+            import re as _re
+            sanitized = _re.sub(
+                r'(": ")(.*?)("(?=\s*[,}\]]))',
+                _fix_unescaped_quotes,
+                raw_text[raw_text.find("{"):] if "{" in raw_text else raw_text,
+                flags=_re.DOTALL,
+            )
+            start = sanitized.find("{")
+            end   = sanitized.rfind("}")
+            if start != -1 and end > start:
+                parsed = json.loads(sanitized[start:end + 1])
+                log.warning("  JSON recuperado após sanitização de aspas não-escapadas")
+        except Exception:
+            pass
 
     if not parsed:
         raise ValueError(

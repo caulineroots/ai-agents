@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { CLAUDE_MODEL } from '@/lib/config/ai';
 import { calcularOrcamento } from '@/lib/orcamento/calcular';
 import type { FolhaMedicao } from '@/lib/orcamento/types';
+import { marmorariaError, marmorariaLog, formatMarmorariaApiError } from '@/lib/orcamento/debug';
 
 const client = new Anthropic();
 
@@ -224,18 +225,28 @@ async function buildImageBlocks(files: File[], pageTexts: string[]): Promise<Arr
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  const t0 = Date.now();
   try {
     const formData = await request.formData();
     const files = formData.getAll('images') as File[];
     const pageTexts = formData.getAll('pageTexts') as string[];
 
+    marmorariaLog('api/chamada-controlada', 'request received', {
+      images: files.length,
+      totalImageKB: Math.round(files.reduce((s, f) => s + f.size, 0) / 1024),
+      pageTextsWithContent: pageTexts.filter((t) => t.trim()).length,
+    });
+
     if (files.length === 0) {
+      marmorariaError('api/chamada-controlada', 'no images in request');
       return Response.json({ error: 'Nenhuma imagem recebida' }, { status: 400 });
     }
 
     const imageBlocks = await buildImageBlocks(files, pageTexts);
+    marmorariaLog('api/chamada-controlada', 'image blocks built', { blocks: imageBlocks.length });
 
     // ── Chamada 1 — Análise inicial ────────────────────────────────────────────
+    marmorariaLog('api/chamada-controlada', 'Claude call 1 starting…');
     const res1 = await client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 8192,
@@ -245,9 +256,15 @@ export async function POST(request: Request) {
       .filter((b) => b.type === 'text')
       .map((b) => (b as Anthropic.TextBlock).text)
       .join('\n');
+    marmorariaLog('api/chamada-controlada', 'Claude call 1 done', {
+      ms: Date.now() - t0,
+      outputChars: output1.length,
+      inputTokens: res1.usage.input_tokens,
+      outputTokens: res1.usage.output_tokens,
+    });
 
     // ── Chamada 2 — Revisão + JSON ────────────────────────────────────────────
-    // Single call: reviews the analysis AND emits the final JSON block.
+    marmorariaLog('api/chamada-controlada', 'Claude call 2 starting…');
     const res2 = await client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 8192,
@@ -261,6 +278,12 @@ export async function POST(request: Request) {
       .filter((b) => b.type === 'text')
       .map((b) => (b as Anthropic.TextBlock).text)
       .join('\n');
+    marmorariaLog('api/chamada-controlada', 'Claude call 2 done', {
+      ms: Date.now() - t0,
+      outputChars: output2.length,
+      inputTokens: res2.usage.input_tokens,
+      outputTokens: res2.usage.output_tokens,
+    });
 
     // ── Cálculo — sem chamada API, só código ──────────────────────────────────
     // Extract the JSON block from output2 and compute area_m2 = comprimento_m × largura_m
@@ -304,8 +327,14 @@ export async function POST(request: Request) {
       } as FolhaMedicao;
 
       resultado = calcularOrcamento(folha);
+      marmorariaLog('api/chamada-controlada', 'calcularOrcamento OK', {
+        itens: folha.itens.length,
+        totalGeral: resultado.totalGeral,
+        ms: Date.now() - t0,
+      });
     } catch (e) {
       parseError = `Erro ao interpretar JSON: ${e instanceof Error ? e.message : String(e)}`;
+      marmorariaError('api/chamada-controlada', 'JSON parse failed', e);
     }
 
     return Response.json({
@@ -318,9 +347,12 @@ export async function POST(request: Request) {
       usage2: res2.usage,
     });
   } catch (error) {
-    console.error('Chamada controlada error:', error);
+    marmorariaError('api/chamada-controlada', 'unhandled error', error);
     const msg = error instanceof Error ? error.message : String(error);
     const detail = (error as { status?: number; error?: unknown })?.error;
-    return Response.json({ error: msg, detail: detail ?? null }, { status: 500 });
+    const userMessage = formatMarmorariaApiError(msg);
+    const status = /credit balance is too low/i.test(msg) ? 402 : 500;
+    marmorariaLog('api/chamada-controlada', 'returning error to client', { status, userMessage });
+    return Response.json({ error: userMessage, detail: detail ?? null, raw: msg }, { status });
   }
 }

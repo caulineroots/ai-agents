@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import type { PranchaGroup } from '@/lib/orcamento-construtora/image-store';
 import { imageStore } from '@/lib/orcamento-construtora/image-store';
 import type { PranchaExtractResult, Step } from '@/hooks/useOrcamentoSession';
-import { ExtractionDebugModal, type ExtractionDebug } from './ExtractionDebugModal';
+import { ExtractionDebugModal, type ExtractionDebug, buildAllPdfExtractionAuditText } from './ExtractionDebugModal';
 
 const CLASS_LABEL: Record<string, string> = {
   DIRETO:        'Extração direta',
@@ -57,48 +57,88 @@ function useImageUrls(groups: PranchaGroup[]) {
 
 // ─── Compile all modal ────────────────────────────────────────────────────────
 
-interface CompileEntry { stem: string; debug: ExtractionDebug; }
+interface CompileEntry { stem: string; debug: ExtractionDebug; result: PranchaExtractResult; }
 
 function buildPlainText(entries: CompileEntry[]): string {
   const lines: string[] = [];
-  for (const { stem, debug } of entries) {
-    lines.push(`${'='.repeat(80)}`);
-    lines.push(`PRANCHA: ${stem}`);
-    lines.push(`${'='.repeat(80)}`);
-    const nConf = debug.n_itens_confirmados ?? 0;
-    const nAgu  = debug.n_itens_aguardando ?? 0;
-    lines.push(`Confirmados: ${nConf}  |  Aguardando: ${nAgu}  |  PDF bruto: ${debug.pdf_n_raw_lines ?? 0} linhas`);
+  for (const { stem, result, debug } of entries) {
+    const itens          = result?.itens_extraidos ?? [];
+    const nConf          = itens.filter((it) => it.status === 'confirmado').length;
+    const nAgu           = itens.length - nConf;
+    const classificacao  = result?.classificacao ?? debug.classificacao ?? '—';
+    const scoreStr       = debug.score != null ? `  |  score: ${debug.score}` : '';
+
+    lines.push('='.repeat(80));
+    lines.push(`PRANCHA: ${stem}  |  ${classificacao}${scoreStr}`);
+    lines.push('='.repeat(80));
+    lines.push(`${itens.length} itens extraídos  (${nConf} confirmados, ${nAgu} aguardando)`);
     lines.push('');
-    if (debug.pdf_raw_lines?.length) {
-      lines.push('--- PDF BRUTO ---');
-      lines.push(...debug.pdf_raw_lines);
-      lines.push('');
-    }
-    if (debug.pdf_items_confirmados?.length) {
-      lines.push(`--- ITENS CONFIRMADOS (${debug.pdf_items_confirmados.length}) ---`);
-      for (const it of debug.pdf_items_confirmados) {
-        const qty = it.quantidade != null ? `${it.quantidade} ${it.unidade ?? ''}`.trim() : '?';
-        lines.push(`  ${it.descricao ?? '—'}  |  ${qty}  |  ${it.categoria ?? ''}  |  ${Math.round((it.confianca ?? 0) * 100)}%`);
+
+    if (itens.length === 0) {
+      lines.push('  (nenhum item extraído)');
+    } else {
+      for (const it of itens) {
+        const status = it.status === 'confirmado' ? '[✓]' : '[?]';
+        const qty    = it.quantidade != null ? `${it.quantidade} ${it.unidade ?? ''}`.trim() : '?';
+        const cat    = it.categoria ? `  [${it.categoria}]` : '';
+        const tab    = it.tabela ? `  tab: ${it.tabela}` : '';
+        const amb    = it.ambiente ? `  amb: ${it.ambiente}` : '';
+        lines.push(`  ${status}  ${it.descricao ?? '—'}  |  ${qty}${cat}${tab}${amb}`);
       }
-      lines.push('');
     }
-    if (debug.pdf_items_parciais?.length) {
-      lines.push(`--- ITENS AGUARDANDO (${debug.pdf_items_parciais.length}) ---`);
-      for (const it of debug.pdf_items_parciais) {
-        const qty = it.quantidade != null ? `${it.quantidade} ${it.unidade ?? ''}`.trim() : '?';
-        lines.push(`  ${it.descricao ?? '—'}  |  ${qty}  |  ${it.categoria ?? ''}  |  ${Math.round((it.confianca ?? 0) * 100)}%`);
-      }
-      lines.push('');
-    }
+    lines.push('');
   }
   return lines.join('\n');
 }
 
+function CopyAllButton({ entries }: { entries: CompileEntry[] }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(buildPlainText(entries)).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="px-5 py-2.5 border border-zinc-600 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 active:scale-95 transition-all"
+    >
+      {copied ? '✓ Copiado' : '⎘ Copiar debug'}
+    </button>
+  );
+}
+
+function CopyAllRawButton({ entries }: { entries: CompileEntry[] }) {
+  const [copied, setCopied] = useState(false);
+  const auditText = useMemo(
+    () => buildAllPdfExtractionAuditText(entries.map(({ stem, debug }) => ({ stem, debug }))),
+    [entries],
+  );
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(auditText).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="px-5 py-2.5 border border-zinc-600 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 active:scale-95 transition-all"
+    >
+      {copied ? '✓ Copiado' : '⎘ Copiar PDF bruto'}
+    </button>
+  );
+}
+
 function CompileAllModal({ entries, onClose }: { entries: CompileEntry[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [copiedRaw, setCopiedRaw] = useState(false);
   const [search, setSearch] = useState('');
   const [activeSection, setActiveSection] = useState<'bruto' | 'confirmados' | 'aguardando' | 'tudo'>('tudo');
   const plainText = useMemo(() => buildPlainText(entries), [entries]);
+  const rawJson   = useMemo(
+    () => buildAllPdfExtractionAuditText(entries.map(({ stem, debug }) => ({ stem, debug }))),
+    [entries],
+  );
   const filtered  = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? entries.filter((e) => e.stem.toLowerCase().includes(q)) : entries;
@@ -126,6 +166,12 @@ function CompileAllModal({ entries, onClose }: { entries: CompileEntry[]; onClos
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
             >
               {copied ? '✓ Copiado' : '⎘ Copiar tudo'}
+            </button>
+            <button
+              onClick={() => { navigator.clipboard.writeText(rawJson).then(() => { setCopiedRaw(true); setTimeout(() => setCopiedRaw(false), 2000); }); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition-colors"
+            >
+              {copiedRaw ? '✓ Copiado' : '⎘ Copiar PDF bruto'}
             </button>
             <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl leading-none px-1">✕</button>
           </div>
@@ -350,71 +396,98 @@ export function StepExtract({
   onExportSession?: () => void;
 }) {
   const hasExisting = existingResults.length > 0;
-  const [phase,   setPhase]   = useState<'idle' | 'running' | 'done' | 'error'>(hasExisting ? 'done' : 'idle');
-  const [results, setResults] = useState<(PranchaExtractResult | null)[]>(
+  const [phase,      setPhase]      = useState<'idle' | 'running' | 'done' | 'error'>(hasExisting ? 'done' : 'idle');
+  const [results,    setResults]    = useState<(PranchaExtractResult | null)[]>(
     hasExisting ? existingResults : Array(groups.length).fill(null),
   );
-  const [current, setCurrent] = useState(-1);
+  const [doneCount,  setDoneCount]  = useState(0);
+  const [inProgress, setInProgress] = useState<Set<number>>(new Set());
   const [debugTarget, setDebugTarget] = useState<{ stem: string; debug: ExtractionDebug } | null>(null);
   const [compileOpen, setCompileOpen] = useState(false);
   const { urls: previewUrls, ready: previewReady } = useImageUrls(groups);
 
+  const CONCURRENCY = 4;
+
   const run = async () => {
     if (groups.length === 0) return;
     setPhase('running');
+    setDoneCount(0);
+    setInProgress(new Set());
     const fresh: (PranchaExtractResult | null)[] = Array(groups.length).fill(null);
     setResults([...fresh]);
 
-    for (let i = 0; i < groups.length; i++) {
-      setCurrent(i);
-      const g = groups[i];
+    const tasks = groups.map((g, i) => async () => {
+      setInProgress((prev) => new Set(prev).add(i));
+
       if (!g.imageFile && !g.pdfFile && !g.dxfFile) {
         fresh[i] = { stem: g.stem, ok: true, classificacao: 'SEM_CONTEUDO', precisa_ia: false,
           n_itens_extraidos: 0, fontes: { pdf: false, dxf: false, image: false },
           debug: { motivo: 'Nenhum arquivo reconhecido neste grupo' } };
-        setResults([...fresh]);
-        continue;
-      }
-      try {
-        const fd = new FormData();
-        if (g.imageFile) fd.append('image', g.imageFile, g.imageFile.name);
-        if (g.pdfFile)   fd.append('pdf',   g.pdfFile,   g.pdfFile.name);
-        if (g.dxfFile)   fd.append('dxf',   g.dxfFile,   g.dxfFile.name);
-        const res = await fetch('/api/orcamento-construtora/extrair-codigo', { method: 'POST', body: fd });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string };
+      } else {
+        const MAX_ATTEMPTS = 3;
+        let lastError = '';
+        let succeeded = false;
+
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          // Small delay before retries (not before first attempt)
+          if (attempt > 1) await new Promise((r) => setTimeout(r, 800 * attempt));
+
+          try {
+            const fd = new FormData();
+            if (g.imageFile) fd.append('image', g.imageFile, g.imageFile.name);
+            if (g.pdfFile)   fd.append('pdf',   g.pdfFile,   g.pdfFile.name);
+            if (g.dxfFile)   fd.append('dxf',   g.dxfFile,   g.dxfFile.name);
+            const res = await fetch('/api/orcamento-construtora/extrair-codigo', { method: 'POST', body: fd });
+
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string };
+              lastError = err.error ?? `HTTP ${res.status}`;
+              continue; // retry
+            }
+
+            const data = await res.json() as Omit<PranchaExtractResult, 'ok' | 'stem'> & { png_base64?: string };
+
+            if (data.png_base64 && !g.imageFile) {
+              try {
+                const bin  = atob(data.png_base64);
+                const arr  = new Uint8Array(bin.length);
+                for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+                const blob = new Blob([arr], { type: 'image/png' });
+                const file = new File([blob], `${g.stem}.png`, { type: 'image/png' });
+                imageStore.setImageFile(g.stem, file);
+              } catch { /* falha silenciosa */ }
+            }
+
+            const { png_base64: _, ...rest } = data;
+            fresh[i] = { ...rest, stem: g.stem, ok: true };
+            succeeded = true;
+            break;
+          } catch (e) {
+            lastError = e instanceof Error ? e.message : String(e);
+            // retry
+          }
+        }
+
+        if (!succeeded) {
           fresh[i] = { stem: g.stem, ok: false, classificacao: 'SEM_CONTEUDO', precisa_ia: true,
             n_itens_extraidos: 0, fontes: { pdf: !!g.pdfFile, dxf: !!g.dxfFile, image: !!g.imageFile },
-            debug: {}, error: err.error ?? `HTTP ${res.status}` };
-        } else {
-          const data = await res.json() as Omit<PranchaExtractResult, 'ok' | 'stem'> & { png_base64?: string };
-
-          // Se o backend converteu o PDF para PNG e o grupo não tem imagem, armazena
-          if (data.png_base64 && !g.imageFile) {
-            try {
-              const bin  = atob(data.png_base64);
-              const arr  = new Uint8Array(bin.length);
-              for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
-              const blob = new Blob([arr], { type: 'image/png' });
-              const file = new File([blob], `${g.stem}.png`, { type: 'image/png' });
-              imageStore.setImageFile(g.stem, file);
-            } catch {
-              // falha silenciosa — grupo continua sem imagem
-            }
-          }
-
-          const { png_base64: _, ...rest } = data;
-          fresh[i] = { ...rest, stem: g.stem, ok: true };
+            debug: {}, error: `Erro após ${MAX_ATTEMPTS} tentativas: ${lastError}` };
         }
-      } catch (e) {
-        fresh[i] = { stem: g.stem, ok: false, classificacao: 'SEM_CONTEUDO', precisa_ia: true,
-          n_itens_extraidos: 0, fontes: { pdf: !!g.pdfFile, dxf: !!g.dxfFile, image: !!g.imageFile },
-          debug: {}, error: e instanceof Error ? e.message : String(e) };
       }
-      setResults([...fresh]);
-    }
 
-    setCurrent(-1);
+      setResults([...fresh]);
+      setDoneCount((c) => c + 1);
+      setInProgress((prev) => { const next = new Set(prev); next.delete(i); return next; });
+    });
+
+    const queue = [...tasks];
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, async () => {
+        while (queue.length > 0) await queue.shift()!();
+      }),
+    );
+
+    setInProgress(new Set());
     setPhase('done');
     onExtractDone(fresh.filter(Boolean) as PranchaExtractResult[]);
   };
@@ -438,7 +511,7 @@ export function StepExtract({
       {compileOpen && (
         <CompileAllModal
           entries={results.filter((r): r is PranchaExtractResult => !!r?.debug)
-            .map((r) => ({ stem: r.stem, debug: r.debug as ExtractionDebug }))}
+            .map((r) => ({ stem: r.stem, debug: r.debug as ExtractionDebug, result: r }))}
           onClose={() => setCompileOpen(false)}
         />
       )}
@@ -453,10 +526,10 @@ export function StepExtract({
         </div>
         {phase === 'running' && (
           <div className="flex flex-col gap-1 items-end">
-            <span className="text-xs text-zinc-400">{current + 1} / {groups.length}</span>
+            <span className="text-xs text-zinc-400">{doneCount} / {groups.length}</span>
             <div className="w-40 h-2 bg-zinc-700 rounded-full overflow-hidden">
               <div className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                style={{ width: `${((current + 1) / groups.length) * 100}%` }} />
+                style={{ width: `${(doneCount / groups.length) * 100}%` }} />
             </div>
           </div>
         )}
@@ -468,7 +541,7 @@ export function StepExtract({
           const g = groups[i];
           const stem = g?.stem ?? r?.stem ?? `prancha-${i + 1}`;
           return (
-            <PranchaCard key={i} group={g ?? null} result={r} loading={phase === 'running' && i === current}
+            <PranchaCard key={i} group={g ?? null} result={r} loading={phase === 'running' && inProgress.has(i)}
               index={i} previewUrl={g ? previewUrls[g.stem] : undefined}
               previewReady={g ? !!previewReady[g.stem] : false}
               onDebug={r?.debug ? () => setDebugTarget({ stem, debug: r.debug as ExtractionDebug }) : undefined}
@@ -508,7 +581,7 @@ export function StepExtract({
       <div className="flex flex-wrap gap-3 items-center pt-1">
         <button onClick={run} disabled={phase === 'running' || groups.length === 0}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-500 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-          {phase === 'running' ? `Extraindo ${current + 1}/${groups.length}…` : isDone ? 'Re-extrair por Código' : 'Extrair por Código →'}
+          {phase === 'running' ? `Extraindo ${doneCount}/${groups.length}…` : isDone ? 'Re-extrair por Código' : 'Extrair por Código →'}
         </button>
         {isDone && (
           <button onClick={onRunAI}
@@ -523,10 +596,16 @@ export function StepExtract({
           </button>
         )}
         {results.some((r) => !!r?.debug) && (
-          <button onClick={() => setCompileOpen(true)}
-            className="px-5 py-2.5 border border-zinc-600 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 active:scale-95 transition-all">
-            Compilar debug
-          </button>
+          <>
+            <CopyAllButton entries={results.filter((r): r is PranchaExtractResult => !!r?.debug)
+              .map((r) => ({ stem: r.stem, debug: r.debug as ExtractionDebug, result: r }))} />
+            <CopyAllRawButton entries={results.filter((r): r is PranchaExtractResult => !!r?.debug)
+              .map((r) => ({ stem: r.stem, debug: r.debug as ExtractionDebug, result: r }))} />
+            <button onClick={() => setCompileOpen(true)}
+              className="px-5 py-2.5 border border-zinc-600 text-zinc-300 rounded-lg text-sm hover:bg-zinc-800 active:scale-95 transition-all">
+              Ver debug
+            </button>
+          </>
         )}
       </div>
     </div>

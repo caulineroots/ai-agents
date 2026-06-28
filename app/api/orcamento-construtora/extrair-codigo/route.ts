@@ -1,5 +1,5 @@
 export const dynamic    = 'force-dynamic';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 import { proxyToPython } from '../_python-service';
 

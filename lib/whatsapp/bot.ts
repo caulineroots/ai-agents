@@ -1,11 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CLAUDE_MODEL } from '@/lib/config/ai';
+import { supabase } from '@/lib/supabase/client';
 
 const client = new Anthropic();
 
-// Memória em RAM por número de telefone — suficiente pra validar o bot
-// Se o servidor reiniciar, o histórico é perdido (comportamento esperado nessa fase)
-const conversas: Record<string, Anthropic.MessageParam[]> = {};
+const MAX_MENSAGENS = 20;
 
 const SYSTEM_PROMPT = `Você é um assistente comercial da Cauline Roots.
 
@@ -46,26 +45,58 @@ Quando o lead aceitar a demo, peça disponibilidade (dia e horário) e confirme 
 - Não mande listas com bullets. Fale como numa conversa normal.
 - Se o lead fizer perguntas técnicas sobre o produto, responda de forma simples e redirecione para a demo.`;
 
+export async function carregarHistorico(numero: string): Promise<Anthropic.MessageParam[]> {
+  return carregarConversa(numero);
+}
+
+async function carregarConversa(numero: string): Promise<Anthropic.MessageParam[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('role, content')
+    .eq('phone', numero)
+    .order('created_at', { ascending: true })
+    .limit(MAX_MENSAGENS);
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    role: row.role as 'user' | 'assistant',
+    content: row.content as string,
+  }));
+}
+
+async function salvarMensagem(numero: string, role: 'user' | 'assistant', content: string) {
+  await supabase.from('conversations').insert({ phone: numero, role, content });
+}
+
+async function limparConversaAntigas(numero: string) {
+  const { data } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('phone', numero)
+    .order('created_at', { ascending: true });
+
+  if (!data || data.length <= MAX_MENSAGENS) return;
+
+  const idsParaApagar = data.slice(0, data.length - MAX_MENSAGENS).map((r) => r.id);
+  await supabase.from('conversations').delete().in('id', idsParaApagar);
+}
+
 export async function processarMensagem(numero: string, texto: string): Promise<string> {
-  if (!conversas[numero]) {
-    conversas[numero] = [];
-  }
+  const historico = await carregarConversa(numero);
 
-  conversas[numero].push({
-    role: 'user',
-    content: texto,
-  });
+  await salvarMensagem(numero, 'user', texto);
 
-  // Mantém no máximo 20 mensagens por conversa (10 trocas)
-  if (conversas[numero].length > 20) {
-    conversas[numero] = conversas[numero].slice(-20);
-  }
+  const mensagens: Anthropic.MessageParam[] = [
+    ...historico,
+    { role: 'user', content: texto },
+  ];
 
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 512,
     system: SYSTEM_PROMPT,
-    messages: conversas[numero],
+    messages: mensagens,
   });
 
   const resposta = response.content
@@ -73,14 +104,12 @@ export async function processarMensagem(numero: string, texto: string): Promise<
     .map((b) => (b as Anthropic.TextBlock).text)
     .join('');
 
-  conversas[numero].push({
-    role: 'assistant',
-    content: resposta,
-  });
+  await salvarMensagem(numero, 'assistant', resposta);
+  await limparConversaAntigas(numero);
 
   return resposta;
 }
 
-export function limparConversa(numero: string): void {
-  delete conversas[numero];
+export async function limparConversa(numero: string): Promise<void> {
+  await supabase.from('conversations').delete().eq('phone', numero);
 }

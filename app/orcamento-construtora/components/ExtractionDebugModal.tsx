@@ -79,16 +79,177 @@ function Badge({ label, value, color = 'gray' }: { label: string; value: string 
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, label = 'Copiar' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
       className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100 flex-shrink-0"
     >
-      {copied ? '✓' : 'Copiar'}
+      {copied ? '✓ Copiado' : label}
     </button>
   );
+}
+
+function buildDebugText(stem: string, debug: ExtractionDebug): string {
+  const sep      = '='.repeat(80);
+  const scoreStr = debug.score != null ? `  |  score: ${debug.score}` : '';
+  const lines: string[] = [
+    sep,
+    `PRANCHA: ${stem}  |  ${debug.classificacao ?? '—'}${scoreStr}`,
+    sep,
+    `${debug.n_itens_confirmados ?? 0} confirmados  |  ${debug.n_itens_aguardando ?? 0} aguardando`,
+    '',
+  ];
+
+  if (debug.pdf_items_confirmados?.length) {
+    lines.push(`--- ITENS CONFIRMADOS (${debug.pdf_items_confirmados.length}) ---`);
+    for (const it of debug.pdf_items_confirmados) {
+      const qty  = it.quantidade != null ? `${it.quantidade} ${it.unidade ?? ''}`.trim() : '?';
+      const cat  = it.categoria ? `  [${it.categoria}]` : '';
+      const tab  = (it as Record<string, unknown>).tabela ? `  tab: ${(it as Record<string, unknown>).tabela}` : '';
+      const conf = it.confianca != null ? `  ${it.confianca}%` : '';
+      lines.push(`  [✓]  ${it.descricao ?? '—'}  |  ${qty}${cat}${tab}${conf}`);
+    }
+    lines.push('');
+  }
+
+  if (debug.pdf_items_parciais?.length) {
+    lines.push(`--- ITENS AGUARDANDO (${debug.pdf_items_parciais.length}) ---`);
+    for (const it of debug.pdf_items_parciais) {
+      const qty  = it.quantidade != null ? `${it.quantidade} ${it.unidade ?? ''}`.trim() : '?';
+      const cat  = it.categoria ? `  [${it.categoria}]` : '';
+      const conf = it.confianca != null ? `  ${it.confianca}%` : '';
+      lines.push(`  [?]  ${it.descricao ?? '—'}  |  ${qty}${cat}${conf}`);
+    }
+    lines.push('');
+  }
+
+  if (!debug.pdf_items_confirmados?.length && !debug.pdf_items_parciais?.length) {
+    lines.push('  (nenhum item extraído)');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+const NOISE_SAMPLE_PER_MOTIVO = 2;
+const MAX_LIMPO_LINES = 150;
+
+function slimItem(it: ItemExtraido) {
+  const extra = it as ItemExtraido & { tabela?: string; grand_total_tabela?: number };
+  return {
+    descricao: extra.descricao,
+    quantidade: extra.quantidade,
+    unidade: extra.unidade,
+    categoria: extra.categoria,
+    status: extra.status,
+    confianca: extra.confianca,
+    tabela: extra.tabela,
+  };
+}
+
+function summarizeNoise(entries?: NoiseEntry[]) {
+  if (!entries?.length) return undefined;
+  const byMotivo: Record<string, number> = {};
+  const samples: Record<string, string[]> = {};
+  for (const e of entries) {
+    byMotivo[e.motivo] = (byMotivo[e.motivo] ?? 0) + 1;
+    if (!samples[e.motivo]) samples[e.motivo] = [];
+    if (samples[e.motivo].length < NOISE_SAMPLE_PER_MOTIVO) {
+      samples[e.motivo].push(e.line.length > 100 ? `${e.line.slice(0, 100)}…` : e.line);
+    }
+  }
+  return { total: entries.length, by_motivo: byMotivo, amostras: samples };
+}
+
+function capLines(lines: string[] | undefined, max: number) {
+  if (!lines?.length) return undefined;
+  if (lines.length <= max) return lines;
+  return [...lines.slice(0, max), `… +${lines.length - max} linhas omitidas`];
+}
+
+/** Resumo compacto para enviar à IA — omite pdf_raw_lines e arrays DXF grandes. */
+export function compactDebugForAI(stem: string, debug: ExtractionDebug) {
+  const erros = [
+    ...(debug.erros_pdf ?? []).map((e) => `PDF: ${e}`),
+    ...(debug.erros_dxf ?? []).map((e) => `DXF: ${e}`),
+    ...(debug.erros_processamento ?? []).map((e) => `PROC: ${e}`),
+  ];
+  return {
+    stem,
+    classificacao: debug.classificacao,
+    score: debug.score,
+    counts: {
+      pdf_raw: debug.pdf_n_raw_lines,
+      pdf_limpo: debug.pdf_n_clean_lines,
+      noise_removed: debug.pdf_n_noise_removed,
+      medidas: debug.pdf_n_measure_lines,
+      tabelas_cea_qnt: debug.pdf_n_tables_cea_qnt,
+      confirmados: debug.n_itens_confirmados,
+      aguardando: debug.n_itens_aguardando,
+    },
+    height_context: debug.height_context,
+    pdf_limpo: capLines(debug.pdf_clean_lines, MAX_LIMPO_LINES),
+    noise: summarizeNoise(debug.pdf_noise_removed),
+    itens_confirmados: debug.pdf_items_confirmados?.map(slimItem) ?? [],
+    itens_aguardando: debug.pdf_items_parciais?.map(slimItem) ?? [],
+    erros: erros.length ? erros : undefined,
+  };
+}
+
+export function buildDebugRawJson(stem: string, debug: ExtractionDebug): string {
+  return JSON.stringify(
+    {
+      _nota: 'Resumo compacto para revisão. pdf_raw_lines omitido; pdf_limpo = linhas budget-relevantes.',
+      ...compactDebugForAI(stem, debug),
+    },
+    null,
+    2,
+  );
+}
+
+export function buildAllDebugRawJson(entries: { stem: string; debug: ExtractionDebug }[]): string {
+  return JSON.stringify(
+    {
+      _nota: 'Resumo compacto para revisão. pdf_raw_lines omitido; pdf_limpo = linhas budget-relevantes.',
+      n_pranchas: entries.length,
+      pranchas: entries.map(({ stem, debug }) => compactDebugForAI(stem, debug)),
+    },
+    null,
+    2,
+  );
+}
+
+/** Texto plano: linhas do PDF sem JSON — bruto, ruído e limpo para auditar filtros. */
+export function buildPdfExtractionAuditText(stem: string, debug: ExtractionDebug): string {
+  const parts: string[] = [`### ${stem}`];
+
+  const raw = debug.pdf_raw_lines ?? [];
+  parts.push('', `## BRUTO (${raw.length})`, ...(raw.length ? raw : ['(vazio)']));
+
+  const noise = debug.pdf_noise_removed ?? [];
+  parts.push('', `## RUIDO (${noise.length})`);
+  if (noise.length) {
+    parts.push(...noise.map((e) => `[${e.motivo}] ${e.line}`));
+  } else {
+    parts.push('(vazio)');
+  }
+
+  const limpo = debug.pdf_clean_lines ?? [];
+  parts.push('', `## LIMPO (${limpo.length})`);
+  if (limpo.length) {
+    parts.push(...limpo);
+  } else {
+    parts.push('(vazio)');
+  }
+
+  return parts.join('\n');
+}
+
+export function buildAllPdfExtractionAuditText(entries: { stem: string; debug: ExtractionDebug }[]): string {
+  const sep = '\n\n' + '='.repeat(80) + '\n\n';
+  return entries.map(({ stem, debug }) => buildPdfExtractionAuditText(stem, debug)).join(sep);
 }
 
 function EmptyState({ msg }: { msg: string }) {
@@ -357,7 +518,11 @@ export function ExtractionDebugModal({
               />
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl px-1 flex-shrink-0">✕</button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <CopyButton text={buildDebugText(stem, debug)} label="Copiar debug" />
+            <CopyButton text={buildPdfExtractionAuditText(stem, debug)} label="Copiar PDF bruto" />
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl px-1">✕</button>
+          </div>
         </div>
 
         <div className="flex flex-1 overflow-hidden">

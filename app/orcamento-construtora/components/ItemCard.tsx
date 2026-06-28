@@ -1,20 +1,25 @@
+import { memo } from 'react';
 import type { ItemOrcamento } from '@/lib/orcamento-construtora/types';
 import { CATEGORIA_LABEL, CATEGORIA_COLOR, STATUS_LABEL } from '@/lib/orcamento-construtora/ui-constants';
 
-export function ItemCard({
+export const ItemCard = memo(function ItemCard({
   item,
   qtdEdit,
   onEditQtd,
   onRemove,
   isActive = false,
+  isRevised = false,
   onRevisado,
+  onToggleRevised,
 }: {
-  item:        ItemOrcamento;
-  qtdEdit:     number | undefined;
-  onEditQtd:   (id: number, v: number) => void;
-  onRemove:    (id: number) => void;
-  isActive?:   boolean;
-  onRevisado?: () => void;
+  item:             ItemOrcamento;
+  qtdEdit:          number | undefined;
+  onEditQtd:        (id: number, v: number) => void;
+  onRemove:         (id: number) => void;
+  isActive?:        boolean;
+  isRevised?:       boolean;
+  onRevisado?:      () => void;
+  onToggleRevised?: () => void;
 }) {
   const st         = STATUS_LABEL[item.status];
   const catColor   = CATEGORIA_COLOR[item.categoria] ?? CATEGORIA_COLOR.outro;
@@ -23,6 +28,23 @@ export function ItemCard({
   const raciocinio = (item as ItemOrcamento & { raciocinio?: string }).raciocinio;
   const unidade    = (item as ItemOrcamento & { unidade?: string }).unidade;
   const showAmb    = item.ambiente && item.ambiente !== 'Geral';
+
+  // ── Collapsed / revisado view ──────────────────────────────────────────────
+  if (isRevised) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggleRevised}
+        onKeyDown={(e) => e.key === 'Enter' && onToggleRevised?.()}
+        className="rounded-lg border border-zinc-700/50 bg-zinc-800/30 px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-zinc-700/40 transition-colors"
+      >
+        <span className="text-green-400 flex-shrink-0 text-sm">✓</span>
+        <span className="text-sm text-zinc-400 truncate flex-1">{item.descricao}</span>
+        <span className="text-xs text-zinc-600 flex-shrink-0">reabrir</span>
+      </div>
+    );
+  }
 
   return (
     <div className={`rounded-lg border p-3 transition-all ${st.color} ${
@@ -105,9 +127,9 @@ export function ItemCard({
             {onRevisado && (
               <button
                 onClick={onRevisado}
-                className="flex items-center gap-1 px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-xs font-medium rounded-lg transition-colors active:scale-95"
+                className="flex items-center gap-1 px-3 py-1 bg-green-800/60 hover:bg-green-700/70 text-green-300 text-xs font-medium rounded-lg transition-colors active:scale-95 border border-green-700/50"
               >
-                Revisado →
+                ✓ Revisado
               </button>
             )}
           </div>
@@ -115,4 +137,4 @@ export function ItemCard({
       </div>
     </div>
   );
-}
+});

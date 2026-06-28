@@ -44,6 +44,40 @@ export interface ItemOrcamento {
   confianca?: number;
   /** Raciocínio curto da IA explicando a origem da quantidade. */
   raciocinio?: string;
+  /** Código XLSX quando mapeado pelo pipeline determinístico. */
+  cod?: string;
+  /** Sugestão de qty da auditoria Haiku (Passo 3). */
+  iaSugestao?: {
+    qty: number;
+    motivo: string;
+    confianca: number;
+    decisao?: 'aceita' | 'mantida';
+  };
+}
+
+export interface IaReconcileResult {
+  duplicatas: Array<{
+    tipo: string;
+    descricao: string;
+    pranchas_envolvidas: string[];
+    cods_afetados: string[];
+  }>;
+  cods_revisados: Array<{
+    cod: string;
+    qty_deterministico: number;
+    qty_sugerida: number;
+    unidade: string;
+    confianca: number;
+    motivo: string;
+    linhas_manter?: string[];
+    linhas_descartar?: string[];
+  }>;
+  observacoes: string[];
+  metadata?: {
+    tokens_input: number;
+    tokens_output: number;
+    custo_usd: number;
+  };
 }
 
 export interface FolhaOrcamento {
@@ -53,6 +87,19 @@ export interface FolhaOrcamento {
   itens: ItemOrcamento[];
   divergencias?: Divergencia[];
   erros_ia?: string[];
+  orcarMeta?: {
+    residual: { cod: string; descricao: string; unidade: string }[];
+    dedup_log: { tabela: string; kept: string | null; dropped: string[]; gt: number | null; motivo?: string }[];
+    iaReconcile?: IaReconcileResult;
+    linhas_pre_agregacao?: Array<{
+      cod?: string;
+      descricao: string;
+      quantidade: number;
+      unidade: string;
+      tabela?: string;
+      fonte_pranchas?: string[];
+    }>;
+  };
 }
 
 // ─── Orçado (após aplicar tabela de preços) ──────────────────────────────────
@@ -60,12 +107,19 @@ export interface FolhaOrcamento {
 export interface ItemOrcado extends ItemOrcamento {
   vlrUnit: number;
   vlrTotal: number;
+  mat?: number;
+  mo?: number;
+  vlrMat?: number;
+  vlrMo?: number;
+  materialCliente?: boolean;
   erros: string[];
 }
 
 export interface ResultadoOrcamento {
   itens: ItemOrcado[];
   totalGeral: number;
+  totalMat: number;
+  totalMo: number;
   porCategoria: Record<string, number>;
   porAmbiente: Record<string, number>;
 }

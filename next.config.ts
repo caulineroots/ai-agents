@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
+  transpilePackages: ['pdfjs-dist'],
   experimental: {
     serverActions: { bodySizeLimit: '50mb' },
   },

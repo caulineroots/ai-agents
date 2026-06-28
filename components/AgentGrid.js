@@ -2,6 +2,17 @@ import AgentCard from "@/components/AgentCard";
 
 const MOCK_AGENTS = [
   {
+    id: 0,
+    emoji: "📍",
+    name: "Maps Lead Extractor",
+    model: "Selenium",
+    status: "idle",
+    tasks: 0,
+    description: "Extrai telefone e site de negócios no Google Maps por nicho e município.",
+    lastRun: "—",
+    href: "/leads-maps",
+  },
+  {
     id: 1,
     emoji: "🔍",
     name: "Research Agent",

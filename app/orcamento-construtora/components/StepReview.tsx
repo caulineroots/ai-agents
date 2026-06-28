@@ -4,17 +4,18 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { FolhaOrcamento, ItemOrcamento } from '@/lib/orcamento-construtora/types';
 import type { PranchaGroup } from '@/lib/orcamento-construtora/image-store';
 import { routeByFilename, GRUPO_LABELS } from '@/lib/orcamento-construtora/prancha-router';
-import { XLSX_POR_COD } from '@/lib/orcamento-construtora/xlsx-checklist';
-import type { GrupoEspecialista } from '@/lib/orcamento-construtora/xlsx-checklist';
+import { XLSX_POR_COD } from '@/lib/orcamento-construtora/xlsx-checklist-bln';
+import type { GrupoEspecialista } from '@/lib/orcamento-construtora/xlsx-checklist-bln';
 import { AddItemForm } from './AddItemForm';
 import { ItemCard } from './ItemCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface PranchaEntry {
-  stem:     string;
-  grupo:    GrupoEspecialista | null;
-  imageUrl: string | null;
+  stem:       string;
+  grupo:      GrupoEspecialista | null;
+  previewUrl: string | null;
+  isPdf:      boolean;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -33,14 +34,15 @@ export function StepReview({
   const [removedIds, setRemovedIds] = useState<Set<number>>(new Set());
   const [addedItems, setAddedItems] = useState<ItemOrcamento[]>([]);
   const [showAddFor, setShowAddFor] = useState(false);
+  const [revisedIds, setRevisedIds] = useState<Set<number>>(new Set());
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   const [pranchaIdx, setPranchaIdx] = useState(0);
   const [reviewIdx,  setReviewIdx]  = useState(0);
 
   // ── Panel drag state ───────────────────────────────────────────────────────
-  const [panelPos,    setPanelPos]    = useState<{ x: number; y: number } | null>(null);
-  const [isDragging,  setIsDragging]  = useState(false);
+  // panelPos drives initial render; during drag we mutate the DOM directly (no re-render)
+  const [panelPos,   setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const panelDragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
   const panelRef     = useRef<HTMLDivElement>(null);
   const cardRefs     = useRef<(HTMLDivElement | null)[]>([]);
@@ -55,13 +57,26 @@ export function StepReview({
   const [pan,  setPan]  = useState({ x: 0, y: 0 });
   const imgDragRef        = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
+  // Refs para leitura sem stale closure no handler de scroll
+  const zoomRef = useRef(zoom);
+  const panRef  = useRef(pan);
+  const rafRef  = useRef<number | null>(null);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { panRef.current  = pan;  }, [pan]);
 
-  // ── Image URLs ─────────────────────────────────────────────────────────────
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  // ── Preview URLs (PNG ou PDF) ───────────────────────────────────────────────
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [isPdfFlags,  setIsPdfFlags]  = useState<boolean[]>([]);
 
   useEffect(() => {
-    const urls = groups.map((g) => (g.imageFile ? URL.createObjectURL(g.imageFile) : ''));
-    setImageUrls(urls);
+    const urls = groups.map((g) => {
+      if (g.imageFile) return URL.createObjectURL(g.imageFile);
+      if (g.pdfFile)   return URL.createObjectURL(g.pdfFile);
+      return '';
+    });
+    const flags = groups.map((g) => !g.imageFile && !!g.pdfFile);
+    setPreviewUrls(urls);
+    setIsPdfFlags(flags);
     return () => urls.forEach((u) => { if (u) URL.revokeObjectURL(u); });
   }, [groups]);
 
@@ -74,11 +89,12 @@ export function StepReview({
       for (const s of ss) { if (!stemToGrupo.has(s)) stemToGrupo.set(s, g); }
     }
     return groups.map((g, i) => ({
-      stem:     g.stem,
-      grupo:    stemToGrupo.get(g.stem) ?? null,
-      imageUrl: imageUrls[i] || null,
+      stem:       g.stem,
+      grupo:      stemToGrupo.get(g.stem) ?? null,
+      previewUrl: previewUrls[i] || null,
+      isPdf:      isPdfFlags[i] ?? false,
     }));
-  }, [groups, imageUrls]);
+  }, [groups, previewUrls, isPdfFlags]);
 
   const current = pranchas[pranchaIdx] ?? null;
 
@@ -118,10 +134,31 @@ export function StepReview({
     const el = imageContainerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
       e.preventDefault();
       e.stopPropagation();
-      setZoom((z) => Math.min(8, Math.max(0.25, z * (e.deltaY < 0 ? 1.02 : 0.98))));
+
+      const rect = el.getBoundingClientRect();
+      const mx   = e.clientX - (rect.left + rect.width  / 2);
+      const my   = e.clientY - (rect.top  + rect.height / 2);
+
+      const factor  = e.deltaY < 0 ? 1.08 : 0.92;
+      const oldZoom = zoomRef.current;
+      const newZoom = Math.min(8, Math.max(0.25, oldZoom * factor));
+      const { x: px, y: py } = panRef.current;
+      const ratio   = newZoom / oldZoom;
+      const newPan  = { x: mx - (mx - px) * ratio, y: my - (my - py) * ratio };
+
+      // Atualiza refs imediatamente (sem re-render)
+      zoomRef.current = newZoom;
+      panRef.current  = newPan;
+
+      // RAF: agrupa múltiplos eventos de scroll num único re-render por frame
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        setZoom(zoomRef.current);
+        setPan(panRef.current);
+        rafRef.current = null;
+      });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -159,34 +196,37 @@ export function StepReview({
     return () => window.removeEventListener('keydown', onKey);
   }, [pranchas.length, pranchaIdx, navigate]);
 
-  // ── Panel drag handlers ────────────────────────────────────────────────────
+  // ── Panel drag handlers (DOM-direct — zero React re-renders during drag) ───
   const onPanelHandleDown = (e: React.PointerEvent) => {
-    // Don't start drag when clicking interactive elements
     const tag = (e.target as HTMLElement).tagName;
     if (['INPUT', 'BUTTON', 'TEXTAREA', 'SELECT', 'LABEL', 'A'].includes(tag)) return;
     if ((e.target as HTMLElement).closest('button, input, textarea, select, label, a')) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    panelDragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      posX:   panelPos?.x ?? 0,
-      posY:   panelPos?.y ?? 0,
-    };
-    setIsDragging(true);
+    const el = panelRef.current;
+    const curX = el ? parseInt(el.style.left || '0', 10) : (panelPos?.x ?? 0);
+    const curY = el ? parseInt(el.style.top  || '0', 10) : (panelPos?.y ?? 0);
+    panelDragRef.current = { startX: e.clientX, startY: e.clientY, posX: curX, posY: curY };
+    if (el) el.style.cursor = 'grabbing';
   };
 
   const onPanelHandleMove = (e: React.PointerEvent) => {
-    if (!panelDragRef.current) return;
-    setPanelPos({
-      x: panelDragRef.current.posX + (e.clientX - panelDragRef.current.startX),
-      y: panelDragRef.current.posY + (e.clientY - panelDragRef.current.startY),
-    });
+    if (!panelDragRef.current || !panelRef.current) return;
+    const x = panelDragRef.current.posX + (e.clientX - panelDragRef.current.startX);
+    const y = panelDragRef.current.posY + (e.clientY - panelDragRef.current.startY);
+    // Move panel via direct DOM style — no setState, no re-render
+    panelRef.current.style.left = `${x}px`;
+    panelRef.current.style.top  = `${y}px`;
   };
 
   const onPanelHandleUp = () => {
+    if (!panelDragRef.current || !panelRef.current) { panelDragRef.current = null; return; }
+    // Sync final position back to React state (single re-render on release)
+    const x = parseInt(panelRef.current.style.left || '0', 10);
+    const y = parseInt(panelRef.current.style.top  || '0', 10);
+    setPanelPos({ x, y });
     panelDragRef.current = null;
-    setIsDragging(false);
+    panelRef.current.style.cursor = '';
   };
 
   // ── Edit helpers ───────────────────────────────────────────────────────────
@@ -219,10 +259,18 @@ export function StepReview({
         onPointerUp={onImgPointerUp}
         onPointerCancel={onImgPointerUp}
       >
-        {current?.imageUrl ? (
+        {current?.previewUrl ? (
+          current.isPdf ? (
+            <iframe
+              src={current.previewUrl}
+              title={current.stem}
+              className="absolute inset-0 w-full h-full border-0 bg-zinc-900"
+              style={{ pointerEvents: 'auto' }}
+            />
+          ) : (
           <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
             <img
-              src={current.imageUrl}
+              src={current.previewUrl}
               alt={current.stem}
               draggable={false}
               style={{
@@ -235,6 +283,7 @@ export function StepReview({
               }}
             />
           </div>
+          )
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-600">
             <span className="text-5xl select-none">🖼</span>
@@ -258,7 +307,7 @@ export function StepReview({
 
         {/* Zoom hint */}
         <div className="absolute bottom-3 left-3 text-xs text-zinc-700 pointer-events-none select-none">
-          Ctrl + scroll · arrastar
+          {current?.isPdf ? 'Role para navegar no PDF' : 'Ctrl + scroll · arrastar'}
         </div>
         {zoom !== 1 && (
           <div className="absolute top-3 left-3 text-xs bg-black/50 text-zinc-300 px-2 py-0.5 rounded-full pointer-events-none">
@@ -313,7 +362,7 @@ export function StepReview({
             top:       panelPos.y,
             width:     PANEL_W,
             maxHeight: 'calc(100vh - 80px)',
-            cursor:    isDragging ? 'grabbing' : 'grab',
+            cursor:    'grab',
           }}
           onPointerDown={onPanelHandleDown}
           onPointerMove={onPanelHandleMove}
@@ -368,8 +417,10 @@ export function StepReview({
                 className={`flex-shrink-0 rounded overflow-hidden border-2 transition-all ${
                   i === pranchaIdx ? 'border-blue-400 opacity-100' : 'border-transparent opacity-40 hover:opacity-70'
                 }`}>
-                {p.imageUrl
-                  ? <img src={p.imageUrl} alt={p.stem} className="h-9 w-12 object-cover" />
+                {p.previewUrl
+                  ? p.isPdf
+                    ? <div className="h-9 w-12 bg-red-900/60 flex items-center justify-center text-red-200 text-[10px] font-bold">PDF</div>
+                    : <img src={p.previewUrl} alt={p.stem} className="h-9 w-12 object-cover" />
                   : <div className="h-9 w-12 bg-zinc-700 flex items-center justify-center text-zinc-500 text-xs">?</div>
                 }
               </button>
@@ -390,8 +441,18 @@ export function StepReview({
                     qtdEdit={edits[item.id]}
                     onEditQtd={applyEdit}
                     onRemove={removeItem}
-                    isActive={i === reviewIdx}
-                    onRevisado={i < stripItems.length - 1 ? () => setReviewIdx(i + 1) : undefined}
+                    isActive={i === reviewIdx && !revisedIds.has(item.id)}
+                    isRevised={revisedIds.has(item.id)}
+                    onToggleRevised={() => setRevisedIds((prev) => {
+                      const s = new Set(prev); s.delete(item.id); return s;
+                    })}
+                    onRevisado={() => {
+                      setRevisedIds((prev) => new Set([...prev, item.id]));
+                      const nextUnrevised = stripItems.findIndex(
+                        (it, j) => j > i && !revisedIds.has(it.id)
+                      );
+                      if (nextUnrevised !== -1) setReviewIdx(nextUnrevised);
+                    }}
                   />
                 </div>
               ))
@@ -401,7 +462,7 @@ export function StepReview({
           {/* Panel footer */}
           <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-t border-zinc-700/60 bg-zinc-800/30">
             <span className="text-xs text-zinc-500">
-              {reviewIdx + 1}/{Math.max(1, stripItems.length)} revisado
+              {stripItems.filter((it) => revisedIds.has(it.id)).length}/{Math.max(1, stripItems.length)} revisados
             </span>
             <button
               onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}

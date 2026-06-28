@@ -7,7 +7,7 @@
 //   "CEA-254-BLN-ARQ_R03-331-ARQ PISO"     → number "331" → G4
 //   "CEA-254-BLN-ARQ_R03-301-ARQ CIVIL"    → number "301" → G2
 
-import type { GrupoEspecialista } from './xlsx-checklist';
+import type { GrupoEspecialista } from './xlsx-checklist-bln';
 
 // ─── Mapeamento prancha → grupo ───────────────────────────────────────────────
 // G1 — Indiretos + Serralheria         | Seções A, 7, 8

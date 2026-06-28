@@ -12,13 +12,14 @@ const MODEL_COLORS = {
   "Claude 3.5": "text-violet-400",
   "Gemini 1.5": "text-blue-400",
   "Llama 3": "text-orange-400",
+  Selenium: "text-cyan-400",
 };
 
 export default function AgentCard({ agent }) {
-  const { name, model, status, tasks, description, lastRun } = agent;
+  const { name, model, status, tasks, description, lastRun, href } = agent;
 
-  return (
-    <article className="bg-white/5 border border-white/10 rounded-xl p-5 flex flex-col gap-4 hover:border-white/20 hover:bg-white/[0.07] transition-all group">
+  const inner = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/30 to-indigo-600/30 border border-white/10 flex items-center justify-center text-base">
@@ -45,6 +46,23 @@ export default function AgentCard({ agent }) {
         <span>{tasks} tasks</span>
         <span>{lastRun}</span>
       </div>
+    </>
+  );
+
+  const cardClass =
+    "bg-white/5 border border-white/10 rounded-xl p-5 flex flex-col gap-4 hover:bg-white/[0.07] transition-all group";
+
+  if (href) {
+    return (
+      <a href={href} className={`${cardClass} hover:border-violet-500/40`}>
+        {inner}
+      </a>
+    );
+  }
+
+  return (
+    <article className={`${cardClass} hover:border-white/20`}>
+      {inner}
     </article>
   );
 }

@@ -197,7 +197,7 @@ function OrcamentoInner() {
           {step === 4 && folha && (
             <StepReview
               folha={folha}
-              groups={imageStore.get().filter((g) => g.imageFile)}
+              groups={imageStore.get().filter((g) => g.imageFile || g.pdfFile)}
               onDone={(updated) => {
                 setFolha(updated);
                 setResultado(calcularOrcamento(updated));
@@ -213,6 +213,7 @@ function OrcamentoInner() {
               resultado={resultado}
               tokenLogs={tokenLogs}
               onReset={reset}
+              onFolhaChange={setFolha}
             />
           )}
 

@@ -9,7 +9,172 @@ orchestrator.py — prompts para o novo pipeline de especialistas:
   /ler-prancha, /orquestrar e /analisar-batch, que permanecem disponíveis.
 """
 
+import re
 import json
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NORMALIZAÇÃO: categorias semânticas padronizadas para tabelas QNT
+# ─────────────────────────────────────────────────────────────────────────────
+
+CATEGORIAS_PADRAO = [
+    # Paredes drywall gesso
+    "drywall_st_1f",          # Standard 1 face (825mm)
+    "drywall_st_2f",          # Standard 2 faces (950mm)
+    "drywall_ru",             # Resistente à Umidade (qualquer espessura/faces)
+    "drywall_rf",             # Resistente ao Fogo (qualquer espessura/faces)
+    "drywall_rfid_1f",        # ST com manta RFID / eletromagnética 1 face
+    "drywall_rfid_2f",        # ST com manta RFID / eletromagnética 2 faces
+    "drywall_rf_rfid",        # RF com manta RFID
+    # Alvenaria
+    "alvenaria_bloco_concreto",   # Bloco de concreto 14cm
+    "alvenaria_bloco_celular",    # Bloco celular / Ytong
+    # Divisórias e painéis
+    "divisoria_eucatex",          # Divilux 35 / Eucatex sanitários
+    "divisoria_laminado_provadores",  # Laminado fórmica / Cumaru / Essencial Wood
+    "painel_mdf_laminado",        # Painel MDF/MDP com laminado
+    "fechamento_cortina_enrolar", # Cortina de enrolar / tela
+    # Fachada e vidros
+    "acm_fachada",               # ACM branco brilho / alumínio composto
+    "vidro_temperado",           # Vidro temperado (vitrine, hidrante)
+    "espelho",                   # Espelho cristal
+    "estrutura_metalon",         # Metalon para estrado / fachada
+    # Pisos
+    "piso_vinilico",             # Vinílico Tarkett / similar
+    "piso_porcelanato",          # Porcelanato (qualquer referência)
+    "piso_ceramica",             # Cerâmica 45x45 (piso)
+    "piso_epoxi",                # Epóxi / contrapiso pintado
+    "piso_tatil",                # Piso tátil / podotátil
+    # Rodapés
+    "rodape_madeira_7cm",        # Curupixá/Tauari h=7cm
+    "rodape_madeira_20cm",       # Curupixá/Tauari h=20cm
+    "rodape_tarkett",            # Primer Tarkett 10cm / Tarkett 50x240mm
+    "rodape_inox",               # Chapa de aço inox escovado
+    "rodape_poliestireno",       # Santa Luzia poliestireno / similar
+    # Pinturas
+    "pintura_branco_gelo_fosca",      # Acrílica fosca Branco Gelo
+    "pintura_branco_gelo_semibrilho", # Acrílica semi-brilho Branco Gelo (ADM)
+    "pintura_branco_neve",           # Látex Branco Neve (forro/laje)
+    "pintura_diario_de_menina",      # Diário de Menina (descompressão/ADM)
+    "pintura_vila_grega",            # Vila Grega SW7551 (salão de vendas)
+    "pintura_textura",               # Textura acrílica (Terracor Velvet etc.)
+    "pintura_epoxi",                 # Epóxi (piso/áreas técnicas)
+    # Forros
+    "forro_gypsum",              # Gypsum liso tabicado estruturado
+    "forro_inox",                # Aço inox escovado estruturado
+    "forro_ripado_mdf",          # Ripado MDF (Essencial Wood / Carvalho Mel)
+    # Cerâmica parede
+    "ceramica_parede_20x20",     # Eliane Forma White 20x20 (sanitários / copa)
+    # Impermeabilização e contrapiso
+    "impermeabilizacao",         # Manta líquida / asfáltica / butílica
+    "contrapiso",                # Enchimento contrapiso h=X cm
+    # RFID manta
+    "rfid_manta",                # Manta aluminizada Durafoil RFID (piso/mezanino)
+    # Soleiras e bancadas
+    "soleira_granito",           # Soleira Branco Cearense / Cinza Andorinha
+    "bancada_granito",           # Bancada granito (copa / vestiário)
+    # Categoria genérica
+    "desconhecido",              # Não foi possível classificar
+]
+
+
+def build_normalizacao_prompt(itens: list[dict]) -> str:
+    """
+    Prompt para o Claude Haiku classificar itens QNT brutos do PDF
+    em categorias semânticas padronizadas.
+
+    REGRA DE SEGURANÇA: a IA nunca altera os valores numéricos —
+    apenas copia quantidade e unidade exatamente do input.
+    """
+    cats_str = "\n".join(f"  - {c}" for c in CATEGORIAS_PADRAO)
+
+    linhas = []
+    for i, it in enumerate(itens):
+        d = it.get("descricao", "")
+        q = it.get("quantidade")
+        u = it.get("unidade", "")
+        linhas.append(f'  {i + 1}. descricao="{d}" | quantidade={q} | unidade="{u}"')
+    itens_str = "\n".join(linhas)
+
+    exemplo = json.dumps({
+        "itens_normalizados": [
+            {"categoria": "drywall_st_1f", "original": "DRYWALL GESSO ST - 825mm", "quantidade": 559, "unidade": "m2"},
+            {"categoria": "alvenaria_bloco_concreto", "original": "ALVENARIA EM BLOCO DE CONCRETO - 14CM", "quantidade": 266, "unidade": "m2"},
+            {"categoria": "desconhecido", "original": "ITEM NÃO RECONHECIDO", "quantidade": 5, "unidade": "un"},
+        ]
+    }, ensure_ascii=False, indent=2)
+
+    return f"""Classifique cada item de tabela QNT de projeto de arquitetura C&A em uma categoria padronizada.
+
+CATEGORIAS DISPONÍVEIS:
+{cats_str}
+
+REGRAS CRÍTICAS:
+- Copie os campos "quantidade" e "unidade" EXATAMENTE como estão no input. NUNCA altere esses valores numéricos.
+- Use "desconhecido" se não tiver certeza sobre a categoria.
+- Retorne TODOS os {len(itens)} itens do input, na mesma ordem.
+- O campo "original" deve conter a descrição exata do input.
+
+ITENS PARA CLASSIFICAR:
+{itens_str}
+
+Responda SOMENTE com JSON válido no formato abaixo (sem texto fora do JSON):
+{exemplo}"""
+
+
+def parse_normalizacao_json(raw_text: str) -> list[dict]:
+    """
+    Parse seguro para resposta de normalização.
+    Retorna [] em qualquer falha — nunca levanta exceção.
+    Valida que os valores numéricos não foram alterados (são copiados do input).
+    """
+    try:
+        parsed = None
+
+        m = re.search(r"```(?:json)?\s*(.*?)```", raw_text, re.DOTALL)
+        if m:
+            try:
+                parsed = json.loads(m.group(1).strip())
+            except Exception:
+                pass
+
+        if not parsed:
+            start = raw_text.find("{")
+            end   = raw_text.rfind("}")
+            if start != -1 and end > start:
+                try:
+                    parsed = json.loads(raw_text[start:end + 1])
+                except Exception:
+                    pass
+
+        if not parsed:
+            return []
+
+        itens = parsed.get("itens_normalizados", [])
+        if not isinstance(itens, list):
+            return []
+
+        result = []
+        for it in itens:
+            if not isinstance(it, dict):
+                continue
+            categoria = str(it.get("categoria", "desconhecido"))
+            original  = str(it.get("original", ""))
+            try:
+                quantidade = float(it.get("quantidade") or 0)
+            except (TypeError, ValueError):
+                quantidade = 0.0
+            unidade = str(it.get("unidade", ""))
+            result.append({
+                "categoria":  categoria,
+                "original":   original,
+                "quantidade": quantidade,
+                "unidade":    unidade,
+            })
+        return result
+
+    except Exception:
+        return []
 
 
 def build_leitura_geral_prompt(batch_items: list[dict]) -> str:
@@ -344,19 +509,25 @@ def build_especialista_prompt(
     secoes: list[str],
     checklist: list[dict],
     pdf_tables: list[dict],
+    obra: str = "",
+    pdf_tables_normalized: "list[dict] | None" = None,
+    pdf_tables_aggregated: "list[dict] | None" = None,
 ) -> str:
     """
     Prompt para o endpoint /especialista.
 
-    grupo         : "G1" … "G6"
-    secoes        : ["A", "7", "8"] etc.
-    checklist     : [{cod, descricao, unidade, zona, vlrUnit, totalEsperado, zerado}]
-    pdf_tables    : [{stem, itens: [{descricao, quantidade, unidade, status, fonte}]}]
+    grupo                 : "G1" … "G6"
+    secoes                : ["A", "7", "8"] etc.
+    checklist             : [{cod, descricao, unidade, zona, vlrUnit, totalEsperado, zerado}]
+    pdf_tables            : [{stem, itens: [{descricao, quantidade, unidade, status, fonte}]}]
+    pdf_tables_normalized : [{stem, itens: [{categoria, original, quantidade, unidade}]}] (opcional)
+    pdf_tables_aggregated : [{stem="_TOTAL_GRUPO_", itens: [{categoria, quantidade, unidade, n_pranchas}]}]
 
-    Lógica:
-    - A IA recebe as imagens das pranchas relevantes + os dados QNT já extraídos do PDF.
-    - Para cada item do checklist, ela deve encontrar a quantidade.
-    - Prioridade: tabela QNT do PDF > inspeção visual da imagem.
+    Lógica (table-only):
+    - A IA recebe APENAS os dados QNT extraídos do PDF — sem imagens.
+    - Para cada item do checklist, ela cruza com as tabelas fornecidas.
+    - Prioridade: TOTAIS AGREGADOS > tabela QNT por prancha.
+    - Se não encontrado em nenhuma tabela → quantidade=0, status="aguardando".
     - Itens zerados (materialCliente ou inaplicáveis) são confirmados diretamente.
     """
     secoes_str = ", ".join(secoes)
@@ -391,46 +562,123 @@ def build_especialista_prompt(
         else "  (nenhuma tabela QNT extraída do PDF para este grupo)"
     )
 
+    # Seção de tabelas normalizadas pelo Haiku (opcional).
+    # Suprimida quando TOTAIS AGREGADOS já está disponível — dados redundantes.
+    norm_section = ""
+    if pdf_tables_normalized and not pdf_tables_aggregated:
+        norm_parts = []
+        for entry in pdf_tables_normalized:
+            stem  = entry.get("stem", "?")
+            itens = entry.get("itens", [])
+            if not itens:
+                continue
+            linhas = [f"  [NORMALIZADO — {stem}]"]
+            for it in itens[:40]:
+                cat = it.get("categoria", "desconhecido")
+                orig = it.get("original", "")[:50]
+                qty  = it.get("quantidade", 0)
+                un   = it.get("unidade", "")
+                linhas.append(f"    categoria: {cat:<30} | original: \"{orig}\" | {qty} {un}")
+            norm_parts.append("\n".join(linhas))
+        if norm_parts:
+            norm_section = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABELAS QNT NORMALIZADAS (categorias semânticas — use para cruzar com o checklist)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join(norm_parts)}
+"""
+
+    # Seção de totais agregados de todas as pranchas do grupo (fonte primária)
+    agg_section = ""
+    if pdf_tables_aggregated:
+        agg_parts = []
+        for entry in pdf_tables_aggregated:
+            itens = entry.get("itens", [])
+            if not itens:
+                continue
+            for it in itens[:60]:
+                cat    = it.get("categoria", "desconhecido")
+                qty    = it.get("quantidade", 0)
+                un     = it.get("unidade", "")
+                n      = it.get("n_pranchas", 1)
+                agg_parts.append(
+                    f"  {cat:<35} | total: {qty} {un:<4} | em {n} prancha(s)"
+                )
+        if agg_parts:
+            agg_section = f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAIS AGREGADOS — SOMA DE TODAS AS PRANCHAS DO GRUPO
+(Use estes totais como FONTE PRIMÁRIA para quantidades.
+ As tabelas por prancha abaixo são referência secundária.)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join(agg_parts)}
+"""
+
+    obra_line = f"OBRA: {obra}\n" if obra else ""
+
+    # Regras de cálculo derivado — injetadas apenas nos grupos relevantes
+    calc_rules = ""
+    if grupo == "G2":
+        calc_rules = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS DE CÁLCULO ESPECÍFICAS — G2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- item 9.7 (Chapisco e emboço): NÃO copie a área de alvenaria diretamente.
+  Calcule: (bloco_concreto + bloco_celular já encontrados acima) × 2 faces
+  + paredes existentes a revestir indicadas nas pranchas (se houver).
+  Mínimo garantido: alvenaria_nova × 2. Campo "r": "chapisco 2× alvenaria [X]m2".
+"""
+    elif grupo == "G3":
+        calc_rules = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS DE CÁLCULO ESPECÍFICAS — G3
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Pinturas de forro e laje: zona vendas e zona ADM têm áreas DISTINTAS — nunca some as duas.
+  item 18.10 (pintura forro vendas): use somente a área de forro da zona de vendas,
+    não o total geral de forro. O forro ADM é contabilizado separadamente.
+  item 18.11 (pintura laje ADM/reservas): a área de teto sem forro de gesso na zona ADM.
+    Procure nas pranchas de forro a área sem cobertura de gypsum. Não retorne 0 por padrão.
+  item 18.12 (pintura forro Diário de Menina ADM): somente a área de forro ADM com essa cor.
+- Pinturas de parede: as áreas vendas e ADM são independentes — não confunda zonas.
+"""
+
     return f"""Você é um engenheiro orcamentista experiente analisando pranchas de projeto executivo
 de fit-out de loja C&A.
 
-GRUPO: {grupo} | SEÇÕES XLSX: {secoes_str}
+{obra_line}GRUPO: {grupo} | SEÇÕES XLSX: {secoes_str}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CHECKLIST — itens que DEVEM ter quantidade preenchida
+CHECKLIST — itens a preencher SE existirem nas tabelas
 (cod | descrição | un | vlrUnit)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {checklist_table}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TABELAS QNT JÁ EXTRAÍDAS DOS PDFs (use como fonte primária)
+TABELAS QNT JÁ EXTRAÍDAS DOS PDFs (referência por prancha)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{pdf_section}
-
+{agg_section}{pdf_section}{norm_section}{calc_rules}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SUAS TAREFAS (em ordem de prioridade):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. PARA CADA ITEM DO CHECKLIST ACIMA:
-   a) Se a tabela QNT do PDF já tem o valor → use-o (fonte="PDF", status="confirmado").
-   b) Se a tabela QNT do PDF não tem → olhe as imagens das pranchas e estime visualmente
-      a partir do que está desenhado (cotas, áreas anotadas, contagem de elementos).
-      Use status="parcial" se conseguir estimar, status="aguardando" se não for possível.
-   c) Se o item está marcado [MAT C&A]: a C&A fornece o material — registre apenas a MO (mão de obra).
-   d) NUNCA invente itens fora do checklist. Retorne SOMENTE os itens listados acima.
+1. PARA CADA ITEM DO CHECKLIST, verifique se existe correspondência nas tabelas QNT acima:
+   a) Encontrou nos TOTAIS AGREGADOS → retorne o item com a quantidade, fonte="PDF", status="confirmado".
+   b) Encontrou na tabela QNT por prancha (sem totais agregados) → some ocorrências, fonte="PDF", status="confirmado".
+   c) NÃO encontrou em nenhuma tabela → OMITA o item completamente do JSON. Não retorne linha com qty=0.
+   d) Item marcado [MAT C&A] com dado nas tabelas → registre somente a MO (mão de obra).
 
 2. USE O CAMPO "cod" PARA IDENTIFICAR CADA ITEM — não altere os códigos.
 
 3. RACIOCÍNIO: campo "r" em até 6 palavras-chave explicando de onde veio a qty.
-   Exemplos: "tabela QNT PDF prancha 331", "estimado visualmente cotas planta", "zerado inaplicável".
+   Exemplos: "tabela QNT PDF prancha 331", "total agregado 3 pranchas", "zerado inaplicável".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 REGRAS CRÍTICAS:
-- Retorne TODOS os itens do checklist, mesmo que quantidade=0.
+- Retorne APENAS itens com quantidade encontrada nas tabelas. Itens ausentes das tabelas → omita.
 - Não adicione itens que não estão no checklist.
 - Não altere os campos "cod" ou "descricao" do checklist.
-- Se não conseguir determinar a quantidade pelas pranchas/PDF: quantidade=0, status="aguardando".
-- NÃO use suposições sobre o tamanho da loja nem estimativas sem base visual nas pranchas.
+- As tabelas QNT do PDF são a ÚNICA fonte — nunca use suposições ou estimativas visuais.
+- Se não há tabelas com dados relevantes, retorne itens: [] (array vazio).
 
 Responda SOMENTE com JSON válido:
 
@@ -454,6 +702,7 @@ Responda SOMENTE com JSON válido:
 def build_auditoria_prompt(
     secao_totais: dict,
     totais_xlsx: dict,
+    obra: str = "",
 ) -> str:
     """
     Prompt para o endpoint /auditar.
@@ -486,9 +735,11 @@ def build_auditoria_prompt(
     total_esp   = sum(totais_xlsx.values())
     delta_total = total_calc - total_esp
 
+    obra_line = f"OBRA: {obra}\n" if obra else ""
+
     return f"""Você é um engenheiro sênior de orçamento auditando o resultado de uma análise de projeto.
 
-COMPARATIVO — CALCULADO vs ESPERADO (1ª Proposta CELMAR BLN):
+{obra_line}COMPARATIVO — CALCULADO vs ESPERADO{(' — ' + obra) if obra else ' (1ª Proposta CELMAR BLN)'}:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {tabela}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -526,3 +777,59 @@ Responda SOMENTE com JSON válido:
   "observacoes": "Texto livre com observações gerais"
 }}
 """
+
+
+def build_verificacao_prompt(
+    grupos_resumo: list[dict],
+    itens_aguardando: list[dict],
+    obra: str = "",
+) -> str:
+    """
+    Prompt para o endpoint /verificar.
+    Usa Haiku para verificar rapidamente se a extração de tabelas está completa.
+
+    grupos_resumo    : [{grupo, n_confirmados, n_aguardando, n_pranchas, categorias_encontradas}]
+    itens_aguardando : [{cod, descricao, grupo}]
+    """
+    obra_line = f"OBRA: {obra}\n" if obra else ""
+
+    grupos_str = ""
+    for g in grupos_resumo:
+        cats = ", ".join(g.get("categorias_encontradas", [])[:10]) or "(nenhuma)"
+        grupos_str += (
+            f"  {g.get('grupo','?')} | {g.get('n_confirmados', 0)} confirmados | "
+            f"{g.get('n_aguardando', 0)} aguardando | {g.get('n_pranchas', 0)} pranchas\n"
+            f"     categorias: {cats}\n"
+        )
+
+    aguardando_str = ""
+    for it in itens_aguardando[:40]:
+        aguardando_str += f"  [{it.get('cod','')}] {it.get('descricao','')[:60]} ({it.get('grupo','')})\n"
+    if not aguardando_str:
+        aguardando_str = "  (nenhum item aguardando)\n"
+
+    exemplo = json.dumps({
+        "qualidade_extracao": "parcial",
+        "observacoes": [
+            "G3 tem 0 pranchas — itens de forro/pintura não foram analisados",
+            "Categoria forro_gypsum ausente em todos os grupos",
+        ],
+        "categorias_possivelmente_ausentes": ["forro_gypsum", "piso_vinilico"],
+        "itens_provavelmente_em_tabela": ["12.1", "12.2"],
+    }, ensure_ascii=False, indent=2)
+
+    return f"""Você é um engenheiro verificando se a extração de tabelas de um projeto de fit-out está completa.
+Analise SOMENTE os dados fornecidos — sem suposições visuais.
+
+{obra_line}RESUMO POR GRUPO:
+{grupos_str}
+ITENS AGUARDANDO (não encontrados em tabelas):
+{aguardando_str}
+TAREFA:
+1. Avalie a qualidade geral da extração: "boa" (>80% confirmados), "parcial" (40-80%), "insuficiente" (<40%).
+2. Liste observações importantes (grupos sem pranchas, categorias ausentes, padrões suspeitos).
+3. Identifique categorias que provavelmente deveriam ter sido extraídas mas estão ausentes.
+4. Liste códigos de itens aguardando que provavelmente têm dados em tabelas mas não foram capturados.
+
+Responda SOMENTE com JSON válido:
+{exemplo}"""

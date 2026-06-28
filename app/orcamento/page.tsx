@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { FolhaMedicao, ItemMedicao, ResultadoOrcamento, Servico } from '@/lib/orcamento/types';
+import { getPdfjs } from '@/lib/orcamento/pdfjs';
+import { marmorariaError, marmorariaLog, formatMarmorariaApiError } from '@/lib/orcamento/debug';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,7 +194,11 @@ function ZoomModal({ url, label, onClose, onPrev, onNext, hasPrev, hasNext }: {
 
 type UploadPhase = 'idle' | 'loading' | 'reviewing' | 'confirming' | 'converting';
 
-function StepUpload({ onConversionStart, onDone }: { onConversionStart: () => void; onDone: (blobs: Blob[], texts: string[]) => void }) {
+function StepUpload({ onConversionStart, onDone, onConversionError }: {
+  onConversionStart: () => void;
+  onDone: (blobs: Blob[], texts: string[]) => void;
+  onConversionError: (message: string) => void;
+}) {
   const [phase, setPhase] = useState<UploadPhase>('idle');
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -272,18 +278,20 @@ function StepUpload({ onConversionStart, onDone }: { onConversionStart: () => vo
   }, [renderToCache]);
 
   const loadPDF = useCallback(async (file: File) => {
+    marmorariaLog('upload', `loadPDF start: ${file.name}`, { sizeKB: Math.round(file.size / 1024) });
     setPhase('loading');
     setError('');
     pageCacheRef.current.clear();
     setCachedPages(new Set());
     bgRenderingRef.current = false;
     try {
-      const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
       const buffer = await file.arrayBuffer();
+      marmorariaLog('upload', 'pdf buffer ready', { bytes: buffer.byteLength });
+      const pdfjsLib = await getPdfjs();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
       pdfDocRef.current = pdf;
       const total = pdf.numPages;
+      marmorariaLog('upload', 'PDF parsed OK', { pages: total });
       setTotalPages(total);
       setSelected(new Set(Array.from({ length: total }, (_, i) => i)));
       currentPageRef.current = 0;
@@ -297,7 +305,9 @@ function StepUpload({ onConversionStart, onDone }: { onConversionStart: () => vo
         await renderToCache(i);
       }
       startBgRender(total);
+      marmorariaLog('upload', 'loadPDF complete → reviewing');
     } catch (err) {
+      marmorariaError('upload', 'loadPDF failed', err);
       setError(err instanceof Error ? err.message : 'Erro ao carregar PDF');
       setPhase('idle');
     }
@@ -307,43 +317,72 @@ function StepUpload({ onConversionStart, onDone }: { onConversionStart: () => vo
 
   const startConversion = useCallback(async () => {
     setError('');
+    const sortedSelected = [...selected].sort((a, b) => a - b);
+    marmorariaLog('convert', 'startConversion (main thread)', {
+      selectedPages: sortedSelected.length,
+      indices: sortedSelected,
+    });
     onConversionStart(); // vai direto pro step 2
     try {
-      const sortedSelected = [...selected].sort((a, b) => a - b);
-
-      // Obtém o ArrayBuffer do PDF original para enviar ao worker
       const pdfDoc = pdfDocRef.current;
       if (!pdfDoc) throw new Error('PDF não carregado');
 
-      const file = pdfFileRef.current;
-      if (!file) throw new Error('Arquivo PDF não encontrado');
-      const pdfData = await file.arrayBuffer();
+      const blobs: Blob[] = [];
+      const texts: string[] = [];
+      const total = sortedSelected.length;
 
-      const worker = new Worker(new URL('./pdf.worker.ts', import.meta.url));
+      for (let j = 0; j < total; j++) {
+        const pageIdx = sortedSelected[j];
+        setProgress(`Convertendo ${j + 1} de ${total}...`);
+        marmorariaLog('convert', `rendering page ${j + 1}/${total}`, { pdfPage: pageIdx + 1 });
 
-      await new Promise<void>((resolve, reject) => {
-        worker.onmessage = (e: MessageEvent) => {
-          const msg = e.data as { type: string; current?: number; total?: number; buffers?: ArrayBuffer[]; texts?: string[]; message?: string };
-          if (msg.type === 'progress') {
-            setProgress(`Convertendo ${msg.current} de ${msg.total}...`);
-          } else if (msg.type === 'done') {
-            const blobs = (msg.buffers ?? []).map((buf) => new Blob([buf], { type: 'image/jpeg' }));
-            worker.terminate();
-            onDone(blobs, msg.texts ?? []);
-            resolve();
-          } else if (msg.type === 'error') {
-            worker.terminate();
-            reject(new Error(msg.message ?? 'Erro no worker'));
-          }
-        };
-        worker.onerror = (ev) => { worker.terminate(); reject(new Error(ev.message)); };
-        worker.postMessage({ pdfData, selectedPages: sortedSelected }, [pdfData]);
+        const page = await pdfDoc.getPage(pageIdx + 1);
+
+        try {
+          const textContent = await page.getTextContent();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const text = (textContent.items as any[])
+            .map((item) => item.str as string)
+            .filter((s) => s.trim())
+            .join(' | ');
+          texts.push(text);
+        } catch {
+          texts.push('');
+        }
+
+        const viewport = page.getViewport({ scale: 1.2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob falhou'))),
+            'image/jpeg',
+            0.82,
+          );
+        });
+        blobs.push(blob);
+
+        // Yield para o browser atualizar a UI entre páginas grandes
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      marmorariaLog('convert', 'conversion done', {
+        images: blobs.length,
+        totalKB: Math.round(blobs.reduce((s, b) => s + b.size, 0) / 1024),
+        textLayers: texts.filter((t) => t.length > 0).length,
       });
+      onDone(blobs, texts);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro na conversão');
+      const message = err instanceof Error ? err.message : 'Erro na conversão';
+      marmorariaError('convert', 'startConversion failed', err);
+      setError(message);
+      onConversionError(message);
       setPhase('confirming');
     }
-  }, [selected, onDone]);
+  }, [selected, onDone, onConversionStart, onConversionError]);
 
   const decide = useCallback((include: boolean) => {
     const pageIdx = currentPageRef.current;
@@ -625,7 +664,7 @@ async function apiFetchJSON<T>(url: string, init: RequestInit): Promise<T> {
 type ProcessingPhase = 'idle' | 'running' | 'done' | 'error';
 
 function StepProcessing({
-  imageBlobs, pageTexts, stage1Output, stage2Output, folha, resultado, tokenLogs, onUpdate, onNavigate, converting,
+  imageBlobs, pageTexts, stage1Output, stage2Output, folha, resultado, tokenLogs, onUpdate, onNavigate, onBackToUpload, converting, conversionError,
 }: {
   imageBlobs: Blob[];
   pageTexts: string[];
@@ -636,7 +675,9 @@ function StepProcessing({
   tokenLogs: TokenLog[];
   onUpdate: (u: PipelineUpdate) => void;
   onNavigate: (step: 3 | 4) => void;
+  onBackToUpload: () => void;
   converting: boolean;
+  conversionError: string | null;
 }) {
   const [phase, setPhase] = useState<ProcessingPhase>(resultado ? 'done' : 'idle');
   const [callStep, setCallStep] = useState<1 | 2 | null>(null);
@@ -644,7 +685,20 @@ function StepProcessing({
   const [openLog, setOpenLog] = useState<1 | 2 | null>(null);
 
   useEffect(() => {
-    if (imageBlobs.length > 0 && !resultado && phase === 'idle') { run(); }
+    marmorariaLog('processing', 'state', {
+      converting,
+      conversionError,
+      imageBlobs: imageBlobs.length,
+      phase,
+      hasResultado: !!resultado,
+    });
+  }, [converting, conversionError, imageBlobs.length, phase, resultado]);
+
+  useEffect(() => {
+    if (imageBlobs.length > 0 && !resultado && phase === 'idle') {
+      marmorariaLog('processing', 'auto-starting AI pipeline');
+      run();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageBlobs.length]);
 
@@ -655,6 +709,11 @@ function StepProcessing({
     setPhase('running');
     setError('');
     setCallStep(1);
+    marmorariaLog('ai', 'POST /api/orcamento/chamada-controlada', {
+      images: imageBlobs.length,
+      pageTexts: pageTexts.length,
+    });
+    const t0 = performance.now();
     try {
       const fd = new FormData();
       imageBlobs.forEach((b, i) => {
@@ -664,31 +723,65 @@ function StepProcessing({
       const r = await fetch('/api/orcamento/chamada-controlada', { method: 'POST', body: fd });
       if (!r.ok) {
         const body = await r.json().catch(() => ({})) as { error?: string };
-        throw new Error(body.error ?? `Erro ${r.status}`);
+        const friendly = formatMarmorariaApiError(body.error ?? `Erro ${r.status}`);
+        marmorariaError('ai', `API ${r.status}`, friendly);
+        throw new Error(friendly);
       }
       setCallStep(2 as 1 | 2);
+      marmorariaLog('ai', 'call 1 done, parsing response…');
       const data = await r.json() as {
         output1: string; output2: string;
         folha: FolhaMedicao | null; resultado: ResultadoOrcamento | null;
         parseError: string | null; usage1: ApiUsage; usage2: ApiUsage;
       };
       setCallStep(null);
+      marmorariaLog('ai', 'pipeline complete', {
+        ms: Math.round(performance.now() - t0),
+        itens: data.folha?.itens.length ?? 0,
+        totalGeral: data.resultado?.totalGeral,
+        parseError: data.parseError,
+        output1chars: data.output1.length,
+        output2chars: data.output2.length,
+      });
       onUpdate({ stage1Output: data.output1 });
       onUpdate({ stage2Output: data.output2 });
       if (data.folha) onUpdate({ folha: data.folha });
       if (data.resultado) onUpdate({ resultado: data.resultado });
       onUpdate({ tokenLog: { stage: 'Análise (1/2)', usage: data.usage1 } });
       onUpdate({ tokenLog: { stage: 'Revisão + JSON (2/2)', usage: data.usage2 } });
-      if (data.parseError) setError(`Aviso: ${data.parseError}`);
+      if (data.parseError) {
+        marmorariaError('ai', 'JSON parse warning', data.parseError);
+        setError(`Aviso: ${data.parseError}`);
+      }
       setPhase('done');
       onNavigate(data.folha ? 3 : 4);
     } catch (err) {
+      marmorariaError('ai', 'pipeline failed', err);
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
       setPhase('error');
     } finally { setCallStep(null); }
-  }, [imageBlobs, pageTexts, onUpdate]);
+  }, [imageBlobs, pageTexts, onUpdate, onNavigate]);
 
   const isDone = phase === 'done' || !!resultado;
+
+  // Conversion failed — don't spin forever on "Preparando imagens"
+  if (conversionError && !converting && imageBlobs.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-5 py-16 animate-fade-in">
+        <p className="text-xl font-medium text-red-400">Falha ao preparar imagens</p>
+        <pre className="text-sm text-red-400/90 bg-red-500/10 border border-red-500/20 rounded px-4 py-3 max-w-lg whitespace-pre-wrap break-words">
+          {conversionError}
+        </pre>
+        <p className="text-sm text-zinc-400">Veja o console do browser (F12) — logs com prefixo <code className="text-zinc-300">[marmoraria]</code></p>
+        <button
+          onClick={onBackToUpload}
+          className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded text-sm hover:bg-zinc-800 transition-all"
+        >
+          ← Voltar ao upload
+        </button>
+      </div>
+    );
+  }
 
   // Loading screen
   if ((converting || phase === 'idle' || phase === 'running') && !resultado) {
@@ -2282,6 +2375,7 @@ export default function OrcamentoPage() {
   const [imageBlobs, setImageBlobs] = useState<Blob[]>([]);
   const [pageTexts, setPageTexts] = useState<string[]>([]);
   const [converting, setConverting] = useState(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const [stage1Output, setStage1Output] = useState<string | null>(null);
   const [stage2Output, setStage2Output] = useState<string | null>(null);
   const [folha, setFolha] = useState<FolhaMedicao | null>(null);
@@ -2457,11 +2551,23 @@ export default function OrcamentoPage() {
         <div className={step === 1 || step === 2 ? '' : 'bg-zinc-900 rounded-sm border border-zinc-800 p-8 shadow-2xl'}>
           {step === 1 && (
             <StepUpload
-              onConversionStart={() => { setConverting(true); setStep(2); }}
+              onConversionStart={() => {
+                marmorariaLog('pipeline', '→ step 2 (converting=true)');
+                setConversionError(null);
+                setConverting(true);
+                setStep(2);
+              }}
+              onConversionError={(msg) => {
+                marmorariaLog('pipeline', 'conversion failed — converting=false', { msg });
+                setConverting(false);
+                setConversionError(msg);
+              }}
               onDone={(blobs, texts) => {
+                marmorariaLog('pipeline', 'images ready', { count: blobs.length, texts: texts.length });
                 setImageBlobs(blobs);
                 setPageTexts(texts);
                 setConverting(false);
+                setConversionError(null);
               }}
             />
           )}
@@ -2477,7 +2583,14 @@ export default function OrcamentoPage() {
               tokenLogs={tokenLogs}
               onUpdate={handleUpdate}
               onNavigate={setStep}
+              onBackToUpload={() => {
+                marmorariaLog('pipeline', '← back to step 1');
+                setStep(1);
+                setConverting(false);
+                setConversionError(null);
+              }}
               converting={converting}
+              conversionError={conversionError}
             />
           )}
 
