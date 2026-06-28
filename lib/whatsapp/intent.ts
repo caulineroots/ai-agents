@@ -96,8 +96,11 @@ Regras de data:
 - Se não mencionar data, prazo = null
 
 ## Formato de resposta OBRIGATÓRIO
-Sempre responda APENAS com JSON válido, sem texto antes ou depois:
-{ "intent": "<tipo>", "dados": { ... }, "resposta": "<texto>" }
+Sempre responda APENAS com JSON válido, sem texto antes ou depois.
+- Ação única: { "intent": "...", "dados": { ... }, "resposta": "<texto>" }
+- Múltiplas ações (ex: "adiciona tarefa X e Y", "anota A, B e C"):
+  [ { "intent": "...", "dados": { ... }, "resposta": "" }, { "intent": "...", "dados": { ... }, "resposta": "" } ]
+  No array, deixe "resposta" vazio — o sistema gera a confirmação automaticamente.
 
 ## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | deletar_item | resposta_simples
 
@@ -106,7 +109,7 @@ Sempre responda APENAS com JSON válido, sem texto antes ou depois:
 ### criar_projeto — dados: { nome, cliente, status, valor_estimado }
 ### criar_financeiro — dados: { descricao, valor, tipo, projeto }
 ### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial" | null, busca_titulo: string }
-Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM item. Para múltiplos, use resposta_simples pedindo um de cada vez. Se o tipo não for mencionado, deixe tipo = null.
+Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM item. Para múltiplos deletes, use resposta_simples pedindo um de cada vez. Se o tipo não for mencionado, deixe tipo = null.
 ### listar_* — dados conforme tipo
 
 ## Regras gerais
@@ -119,7 +122,7 @@ Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM it
 async function detectarIntent(
   historico: Anthropic.MessageParam[],
   mensagem: string,
-): Promise<IntentResult | null> {
+): Promise<IntentResult | IntentResult[] | null> {
   const systemPrompt = await getBrainSystem();
 
   const messages: Anthropic.MessageParam[] = [
@@ -129,7 +132,7 @@ async function detectarIntent(
 
   const res = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: systemPrompt,
     messages,
   });
@@ -140,6 +143,13 @@ async function detectarIntent(
     .join('');
 
   try {
+    // Tenta array primeiro: [ {...}, {...} ]
+    const arrayStr = raw.match(/\[[\s\S]*\]/)?.[0];
+    if (arrayStr) {
+      const arr = JSON.parse(arrayStr) as IntentResult[];
+      if (Array.isArray(arr) && arr.length > 0) return arr;
+    }
+    // Fallback para objeto único
     const jsonStr = raw.match(/\{[\s\S]*\}/)?.[0] ?? raw;
     return JSON.parse(jsonStr) as IntentResult;
   } catch {
@@ -419,6 +429,13 @@ export async function processarComBrain(
     if (!result) {
       return 'Não entendi bem. Pode reformular?';
     }
+
+    // Múltiplos intents — executa em paralelo e consolida respostas
+    if (Array.isArray(result)) {
+      const respostas = await Promise.all(result.map(r => executarIntent(r, phone)));
+      return respostas.join('\n\n');
+    }
+
     return await executarIntent(result, phone);
   } catch (err) {
     console.error('[brain] erro:', err);
