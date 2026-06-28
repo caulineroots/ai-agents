@@ -54,34 +54,52 @@ async function baixarMidiaEvolution(messageKey: unknown, message: unknown): Prom
         body: JSON.stringify({ message: { key: messageKey, message } }),
       },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error('[webhook] baixarMidia erro:', res.status, txt.slice(0, 200));
+      return null;
+    }
     const json = (await res.json()) as { base64?: string };
-    if (!json.base64) return null;
+    if (!json.base64) {
+      console.error('[webhook] baixarMidia: base64 ausente na resposta');
+      return null;
+    }
     return Buffer.from(json.base64, 'base64');
-  } catch {
+  } catch (err) {
+    console.error('[webhook] baixarMidia exception:', err);
     return null;
   }
 }
 
 async function transcreverAudio(audioBuffer: Buffer): Promise<string | null> {
   try {
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey) return null;
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey) {
+      console.error('[webhook] GROQ_API_KEY não configurado — Whisper indisponível');
+      return null;
+    }
 
     const form = new FormData();
-    form.append('file', new Blob([audioBuffer], { type: 'audio/ogg' }), 'audio.ogg');
-    form.append('model', 'whisper-1');
+    form.append('file', new Blob([audioBuffer], { type: 'audio/ogg; codecs=opus' }), 'audio.ogg');
+    form.append('model', 'whisper-large-v3-turbo');
     form.append('language', 'pt');
+    form.append('response_format', 'json');
 
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${openaiKey}` },
+      headers: { Authorization: `Bearer ${groqKey}` },
       body: form,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error('[webhook] Groq Whisper erro:', res.status, txt.slice(0, 200));
+      return null;
+    }
     const json = (await res.json()) as { text?: string };
+    console.log('[webhook] Groq transcrição:', json.text?.slice(0, 80));
     return json.text ?? null;
-  } catch {
+  } catch (err) {
+    console.error('[webhook] transcreverAudio exception:', err);
     return null;
   }
 }
