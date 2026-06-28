@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CLAUDE_MODEL } from '@/lib/config/ai';
 import { calcularOrcamento } from '@/lib/orcamento-marcenaria/calcular';
-import { PROMPT_1, buildReviewPrompt } from '@/lib/orcamento-marcenaria/prompts';
+import { getPrompt1, buildReviewPromptFromDB } from '@/lib/orcamento-marcenaria/prompts';
 import type { FolhaMedicao } from '@/lib/orcamento-marcenaria/types';
 
 const client = new Anthropic();
@@ -45,25 +45,30 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Nenhuma imagem recebida' }, { status: 400 });
     }
 
-    const imageBlocks = await buildImageBlocks(files, pageTexts);
+    const [imageBlocks, prompt1] = await Promise.all([
+      buildImageBlocks(files, pageTexts),
+      getPrompt1(),
+    ]);
 
     const res1 = await client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 8192,
-      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: PROMPT_1 }] }],
+      messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: prompt1 }] }],
     });
     const output1 = res1.content
       .filter((b) => b.type === 'text')
       .map((b) => (b as Anthropic.TextBlock).text)
       .join('\n');
 
+    const reviewPrompt = await buildReviewPromptFromDB(output1);
+
     const res2 = await client.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 8192,
       messages: [
-        { role: 'user', content: [...imageBlocks, { type: 'text', text: PROMPT_1 }] },
+        { role: 'user', content: [...imageBlocks, { type: 'text', text: prompt1 }] },
         { role: 'assistant', content: output1 },
-        { role: 'user', content: buildReviewPrompt(output1) },
+        { role: 'user', content: reviewPrompt },
       ],
     });
     const output2 = res2.content

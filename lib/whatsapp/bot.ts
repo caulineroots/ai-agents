@@ -1,12 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CLAUDE_MODEL } from '@/lib/config/ai';
 import { supabase } from '@/lib/supabase/client';
+import { getPrompt } from './prompts-db';
 
 const client = new Anthropic();
 
 const MAX_MENSAGENS = 20;
 
-const SYSTEM_PROMPT = `Você é um assistente comercial da Cauline Roots.
+// Prompt padrão inline usado como fallback se o DB ainda não tiver o registro
+const SYSTEM_PROMPT_FALLBACK = `Você é um assistente comercial da Cauline Roots.
 
 Seu objetivo é qualificar donos de marmoraria e marcenaria para agendar uma demonstração do nosso agente de IA de orçamento.
 
@@ -65,7 +67,7 @@ async function carregarConversa(numero: string): Promise<Anthropic.MessageParam[
   }));
 }
 
-async function salvarMensagem(numero: string, role: 'user' | 'assistant', content: string) {
+export async function salvarMensagem(numero: string, role: 'user' | 'assistant', content: string) {
   await supabase.from('conversations').insert({ phone: numero, role, content });
 }
 
@@ -92,10 +94,12 @@ export async function processarMensagem(numero: string, texto: string): Promise<
     { role: 'user', content: texto },
   ];
 
+  const systemPrompt = (await getPrompt('helena_sdr')) ?? SYSTEM_PROMPT_FALLBACK;
+
   const response = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 512,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: mensagens,
   });
 

@@ -1,4 +1,7 @@
-export const PROMPT_1 = `Você é um marceneiro sênior especializado em móveis sob medida, analisando pranchas de projeto arquitetônico.
+import { getPrompt } from '@/lib/whatsapp/prompts-db';
+
+// Prompt inline de fallback para quando o DB ainda não tiver sido populado
+const PROMPT_1_FALLBACK = `Você é um marceneiro sênior especializado em móveis sob medida, analisando pranchas de projeto arquitetônico.
 Analise todas as imagens em conjunto (estão em ordem).
 
 ═══════════════════════════════════════════════════════
@@ -72,11 +75,10 @@ Formato — tabela markdown:
 | Ambiente | Módulo | Tipo | Comp (m) | Prof/Alt (m) | Fita (ml) | Status | Obs |
 (Status: ✅ Confirmado | ⚠️ Estimado | ❓ Pendente)`;
 
-export function buildReviewPrompt(output1: string): string {
-  return `Você é um revisor sênior de orçamentos de marcenaria sob medida. Recebeu a análise abaixo e deve fazer uma revisão crítica com as mesmas pranchas à vista.
+const REVIEW_FALLBACK_TEMPLATE = `Você é um revisor sênior de orçamentos de marcenaria sob medida. Recebeu a análise abaixo e deve fazer uma revisão crítica com as mesmas pranchas à vista.
 
 ───────────────────
-${output1}
+{{OUTPUT_1}}
 ───────────────────
 
 ## PARTE 1 — CHECKLIST R1–R8
@@ -141,4 +143,19 @@ Serviços — nomes EXATOS:
   Correr     → {"nome":"Porta de correr","qtd":N,"unidade":"un"}
   Montagem   → {"nome":"Montagem in loco","qtd":1,"unidade":"un"}
   Puxadores  → {"nome":"Puxadores","qtd":N,"unidade":"un"}`;
+
+export async function getPrompt1(): Promise<string> {
+  return (await getPrompt('marcenaria_analise')) ?? PROMPT_1_FALLBACK;
+}
+
+export async function buildReviewPromptFromDB(output1: string): Promise<string> {
+  const template = (await getPrompt('marcenaria_revisao')) ?? REVIEW_FALLBACK_TEMPLATE;
+  return template.replace('{{OUTPUT_1}}', output1);
+}
+
+// Manter exports síncronos como aliases para compatibilidade (usam fallback inline)
+export const PROMPT_1 = PROMPT_1_FALLBACK;
+
+export function buildReviewPrompt(output1: string): string {
+  return REVIEW_FALLBACK_TEMPLATE.replace('{{OUTPUT_1}}', output1);
 }
