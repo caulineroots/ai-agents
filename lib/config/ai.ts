@@ -1,1 +1,1 @@
-export const CLAUDE_MODEL = 'claude-sonnet-4-6';
+export const CLAUDE_MODEL = 'claude-haiku-4-5';
