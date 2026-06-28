@@ -15,6 +15,9 @@ import {
   formatarLeads,
   formatarProjetos,
   formatarFinanceiro,
+  agendarLembretes,
+  listarLembretes,
+  cancelarLembretes,
   type VaultDocument,
 } from './vault';
 import { criarEventoCalendar } from './calendar';
@@ -36,6 +39,8 @@ type IntentType =
   | 'listar_projetos'
   | 'listar_financeiro'
   | 'deletar_item'
+  | 'listar_lembretes'
+  | 'cancelar_lembrete'
   | 'resposta_simples';
 
 interface IntentResult {
@@ -102,14 +107,17 @@ Sempre responda APENAS com JSON válido, sem texto antes ou depois.
   [ { "intent": "...", "dados": { ... }, "resposta": "" }, { "intent": "...", "dados": { ... }, "resposta": "" } ]
   No array, deixe "resposta" vazio — o sistema gera a confirmação automaticamente.
 
-## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | deletar_item | resposta_simples
+## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
 
-### criar_tarefa — dados: { titulo, prazo, urgencia, descricao }
+### criar_tarefa — dados: { titulo, prazo, prazo_hora, urgencia, descricao }
+prazo: ISO date "YYYY-MM-DD" | null. prazo_hora: "HH:MM" (24h) | null — extraia de "às 10h" → "10:00", "às 14h30" → "14:30".
 ### criar_lead — dados: { nome, empresa, telefone, interesse }
 ### criar_projeto — dados: { nome, cliente, status, valor_estimado }
 ### criar_financeiro — dados: { descricao, valor, tipo, projeto }
 ### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial" | null, busca_titulo: string }
 Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM item. Para múltiplos deletes, use resposta_simples pedindo um de cada vez. Se o tipo não for mencionado, deixe tipo = null.
+### listar_lembretes — dados: {} — Gatilhos: "lembretes", "meus lembretes", "que lembretes tenho"
+### cancelar_lembrete — dados: { busca_titulo: string | null } — Cancela lembretes de uma tarefa (ou todos se busca_titulo = null). Gatilhos: "cancela lembrete", "remove lembrete", "apaga lembrete"
 ### listar_* — dados conforme tipo
 
 ## Regras gerais
@@ -170,8 +178,11 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
         return 'Não consegui identificar o título da tarefa. Pode repetir com mais detalhes?';
       }
 
+      const prazoHora = (dados.prazo_hora as string) ?? undefined;
+
       const doc = await criarTarefa(titulo.trim(), {
         prazo: (dados.prazo as string) ?? undefined,
+        prazo_hora: prazoHora,
         urgencia: (dados.urgencia as 'baixa' | 'media' | 'alta') ?? 'media',
         descricao: (dados.descricao as string) ?? undefined,
       });
@@ -197,9 +208,22 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
         } catch { /* calendar é opcional */ }
       }
 
-      const prazoStr = dados.prazo ? (dados.prazo as string) : 'sem prazo';
+      // Agenda lembretes automáticos se houver prazo
+      let lembreteStr = '';
+      if (doc && dados.prazo) {
+        const qtd = await agendarLembretes(doc.id, phone, dados.prazo as string, prazoHora);
+        if (qtd > 0) {
+          lembreteStr = prazoHora
+            ? `\nLembretes: ${qtd} agendados (24h, 12h, 6h, 2h, 1h, 30m, 10m, 2m antes)`
+            : `\nLembretes: agendados (24h antes e manhã do dia)`;
+        }
+      }
+
+      const prazoStr = dados.prazo
+        ? prazoHora ? `${dados.prazo as string} às ${prazoHora}` : (dados.prazo as string)
+        : 'sem prazo';
       const urgenciaStr = (dados.urgencia as string) ?? 'media';
-      return `✓ Tarefa salva\nTítulo: ${titulo}\nPrazo: ${prazoStr}\nUrgência: ${urgenciaStr}`;
+      return `✓ Tarefa salva\nTítulo: ${titulo}\nPrazo: ${prazoStr}\nUrgência: ${urgenciaStr}${lembreteStr}`;
     }
 
     case 'criar_lead': {
@@ -343,6 +367,46 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       });
 
       return `Encontrei ${matches.length} itens:\n${lista}\n\nQual deles? Responda com o número ou CANCELAR.`;
+    }
+
+    case 'listar_lembretes': {
+      return await listarLembretes(phone);
+    }
+
+    case 'cancelar_lembrete': {
+      const buscaTitulo = dados.busca_titulo as string | null;
+
+      if (!buscaTitulo?.trim()) {
+        // Cancela todos os lembretes pendentes
+        const qtd = await cancelarLembretes(phone);
+        return qtd > 0
+          ? `✓ ${qtd} lembrete(s) cancelado(s).`
+          : 'Nenhum lembrete pendente para cancelar.';
+      }
+
+      // Busca a tarefa pelo título para cancelar lembretes específicos
+      const { data: encontrados } = await supabase
+        .from('vault_documents')
+        .select('id, title')
+        .ilike('title', `%${buscaTitulo.trim()}%`)
+        .eq('type', 'task')
+        .limit(3);
+
+      if (!encontrados || encontrados.length === 0) {
+        return `Não encontrei tarefa com "${buscaTitulo}" para cancelar os lembretes.`;
+      }
+
+      if (encontrados.length === 1) {
+        const tarefa = encontrados[0] as VaultDocument;
+        const qtd = await cancelarLembretes(phone, tarefa.id);
+        return qtd > 0
+          ? `✓ Lembretes de "${tarefa.title}" cancelados.`
+          : `Nenhum lembrete pendente para "${tarefa.title}".`;
+      }
+
+      // Múltiplos — pede para especificar
+      const lista = encontrados.map((t, i) => `${i + 1}. ${(t as VaultDocument).title}`).join('\n');
+      return `Encontrei ${encontrados.length} tarefas com esse nome:\n${lista}\n\nEspecifica melhor qual tarefa.`;
     }
 
     case 'resposta_simples':

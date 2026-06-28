@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
+import { getPrompt } from './prompts-db';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ export interface VaultDocument {
 // Metadados específicos por tipo
 export interface TarefaMetadata {
   prazo?: string;           // ISO date string, ex: "2026-07-10"
+  prazo_hora?: string;      // Horário, ex: "10:00" — opcional
   urgencia?: 'baixa' | 'media' | 'alta';
   status?: 'pendente' | 'em_andamento' | 'concluida';
   projeto_id?: string | null;
@@ -132,6 +134,7 @@ export async function criarTarefa(
 ): Promise<VaultDocument | null> {
   return criar('task', titulo, undefined, {
     prazo: meta?.prazo ?? null,
+    prazo_hora: meta?.prazo_hora ?? null,
     urgencia: meta?.urgencia ?? 'media',
     status: meta?.status ?? 'pendente',
     projeto_id: meta?.projeto_id ?? null,
@@ -231,4 +234,150 @@ export function formatarFinanceiro(docs: VaultDocument[]): string {
   const saldo = totalReceita - totalDespesa;
   const saldoStr = `\nSaldo: R$${saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (↑${totalReceita.toLocaleString('pt-BR')} / ↓${totalDespesa.toLocaleString('pt-BR')})`;
   return linhas.join('\n') + saldoStr;
+}
+
+// ─── Lembretes ────────────────────────────────────────────────────────────────
+
+interface ReminderConfig {
+  offsets_com_hora: number[];
+  offsets_sem_hora: number[];
+  labels: Record<string, string>;
+}
+
+const DEFAULT_CONFIG: ReminderConfig = {
+  offsets_com_hora: [-1440, -720, -360, -120, -60, -30, -10, -2],
+  offsets_sem_hora: [-1440, -60],
+  labels: {
+    '-1440': '24h', '-720': '12h', '-360': '6h', '-120': '2h',
+    '-60': '1h', '-30': '30m', '-10': '10m', '-2': '2m', 'manha': 'manhã',
+  },
+};
+
+/**
+ * Agenda lembretes no Supabase para uma tarefa com prazo.
+ * Retorna o número de lembretes inseridos.
+ */
+export async function agendarLembretes(
+  taskId: string,
+  phone: string,
+  prazo: string,        // "YYYY-MM-DD"
+  prazoHora?: string,   // "HH:MM" — opcional
+): Promise<number> {
+  try {
+    const configRaw = await getPrompt('reminder_config');
+    const config: ReminderConfig = configRaw ? JSON.parse(configRaw) : DEFAULT_CONFIG;
+
+    const temHora = Boolean(prazoHora);
+    const hora = prazoHora ?? '09:00';  // hora default para tarefas sem horário
+    const [hh, mm] = hora.split(':').map(Number);
+
+    // Monta o datetime do evento em Brasília (UTC-3)
+    const eventoBRT = new Date(`${prazo}T${hora}:00-03:00`);
+
+    const offsets = temHora ? config.offsets_com_hora : config.offsets_sem_hora;
+    const agora = new Date();
+
+    const rows = offsets
+      .map((offsetMin) => {
+        const sendAt = new Date(eventoBRT.getTime() + offsetMin * 60 * 1000);
+        // Não agenda lembretes no passado
+        if (sendAt <= agora) return null;
+        const label = config.labels[String(offsetMin)] ?? `${Math.abs(offsetMin)}m`;
+        return {
+          vault_document_id: taskId,
+          phone,
+          send_at: sendAt.toISOString(),
+          offset_label: label,
+        };
+      })
+      .filter(Boolean);
+
+    if (rows.length === 0) return 0;
+
+    // Para tarefas sem hora específica, adiciona lembrete especial na manhã do dia
+    if (!temHora) {
+      const manhaEvento = new Date(`${prazo}T08:00:00-03:00`);
+      if (manhaEvento > agora) {
+        rows.push({
+          vault_document_id: taskId,
+          phone,
+          send_at: manhaEvento.toISOString(),
+          offset_label: 'manhã',
+        });
+      }
+    }
+
+    const { error } = await supabase.from('reminders').insert(rows);
+    if (error) {
+      console.error('[vault] erro ao agendar lembretes:', error.message);
+      return 0;
+    }
+
+    return rows.length;
+  } catch (err) {
+    console.error('[vault] erro inesperado em agendarLembretes:', err);
+    return 0;
+  }
+}
+
+/**
+ * Lista lembretes pendentes de um phone (próximos 7 dias).
+ */
+export async function listarLembretes(phone: string): Promise<string> {
+  const agora = new Date().toISOString();
+  const limite = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('reminders')
+    .select('send_at, offset_label, vault_document_id')
+    .eq('phone', phone)
+    .eq('sent', false)
+    .gte('send_at', agora)
+    .lte('send_at', limite)
+    .order('send_at', { ascending: true })
+    .limit(20);
+
+  if (error || !data || data.length === 0) {
+    return 'Nenhum lembrete agendado nos próximos 7 dias.';
+  }
+
+  // Busca títulos das tarefas
+  const ids = [...new Set(data.map(r => r.vault_document_id).filter(Boolean))];
+  const { data: tarefas } = await supabase
+    .from('vault_documents')
+    .select('id, title')
+    .in('id', ids);
+
+  const tituloMap = new Map((tarefas ?? []).map(t => [t.id, t.title as string]));
+
+  const linhas = data.map(r => {
+    const dt = new Date(r.send_at as string);
+    const dtBRT = new Date(dt.getTime() - 3 * 60 * 60 * 1000);
+    const dataStr = dtBRT.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    const horaStr = dtBRT.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const titulo = tituloMap.get(r.vault_document_id as string) ?? 'tarefa';
+    return `• ${dataStr} às ${horaStr} — "${titulo}" (falta ${r.offset_label})`;
+  });
+
+  return `Lembretes agendados:\n${linhas.join('\n')}`;
+}
+
+/**
+ * Cancela lembretes de uma tarefa específica ou todos de um phone.
+ */
+export async function cancelarLembretes(phone: string, taskId?: string): Promise<number> {
+  let query = supabase
+    .from('reminders')
+    .delete()
+    .eq('phone', phone)
+    .eq('sent', false);
+
+  if (taskId) query = query.eq('vault_document_id', taskId) as typeof query;
+
+  const { error, count } = await query;
+  if (error) {
+    console.error('[vault] erro ao cancelar lembretes:', error.message);
+    return 0;
+  }
+  return count ?? 0;
 }
