@@ -294,27 +294,15 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
 
       const tiposValidos = ['task', 'lead', 'project', 'financial'];
 
-      // Monta a query — se tipo não informado ou inválido, busca em todos os tipos
-      let query = supabase
-        .from('vault_documents')
-        .select('id, title, type, metadata')
-        .ilike('title', `%${buscaTitulo.trim()}%`)
-        .limit(5);
+      const matches = await buscarParaDeletar(buscaTitulo.trim(), tipo && tiposValidos.includes(tipo) ? tipo : null);
 
-      if (tipo && tiposValidos.includes(tipo)) {
-        query = query.eq('type', tipo) as typeof query;
-      }
-
-      const { data: matches, error } = await query;
-
-      if (error) {
-        console.error('[intent] erro ao buscar para deletar:', error);
+      if (!matches) {
         return 'Erro ao buscar o item. Tenta de novo.';
       }
 
-      if (!matches || matches.length === 0) {
-        const tipoNome = tipoParaNome(tipo);
-        return `Não encontrei nenhum(a) ${tipoNome} com "${buscaTitulo}".`;
+      if (matches.length === 0) {
+        const tipoNome = tipoParaNome(tipo ?? '');
+        return `Não encontrei ${tipoNome ? `nenhum(a) ${tipoNome}` : 'nenhum item'} com "${buscaTitulo}".`;
       }
 
       if (matches.length === 1) {
@@ -351,6 +339,56 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     default:
       return result.resposta;
   }
+}
+
+// Palavras irrelevantes para busca fuzzy (stopwords PT-BR)
+const STOPWORDS = new Set(['de', 'do', 'da', 'dos', 'das', 'com', 'para', 'por', 'em',
+  'no', 'na', 'nos', 'nas', 'e', 'a', 'o', 'as', 'os', 'um', 'uma', 'uns', 'umas',
+  'que', 'se', 'ao', 'aos', 'c', 'p', 'pra', 'pro']);
+
+async function buscarParaDeletar(
+  busca: string,
+  tipo: string | null,
+): Promise<VaultDocument[] | null> {
+  const buildQuery = (filtro: string) => {
+    let q = supabase
+      .from('vault_documents')
+      .select('id, title, type, metadata')
+      .ilike('title', filtro)
+      .limit(5);
+    if (tipo) q = q.eq('type', tipo) as typeof q;
+    return q;
+  };
+
+  // 1ª tentativa: busca direta com o termo completo
+  const { data: exato, error: err1 } = await buildQuery(`%${busca}%`);
+  if (err1) { console.error('[intent] erro ao buscar:', err1); return null; }
+  if (exato && exato.length > 0) return exato as VaultDocument[];
+
+  // 2ª tentativa: busca por palavras significativas (fuzzy fallback)
+  const palavras = busca
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(p => p.length >= 3 && !STOPWORDS.has(p));
+
+  if (palavras.length === 0) return [];
+
+  // Carrega todos os itens do tipo e faz score por palavras que batem
+  let q = supabase.from('vault_documents').select('id, title, type, metadata').limit(50);
+  if (tipo) q = q.eq('type', tipo) as typeof q;
+  const { data: todos, error: err2 } = await q;
+  if (err2 || !todos) return [];
+
+  const scored = todos
+    .map((item) => {
+      const titleLower = (item.title as string).toLowerCase();
+      const hits = palavras.filter(p => titleLower.includes(p)).length;
+      return { item: item as VaultDocument, hits };
+    })
+    .filter(({ hits }) => hits > 0)
+    .sort((a, b) => b.hits - a.hits);
+
+  return scored.slice(0, 5).map(s => s.item);
 }
 
 function tipoParaNome(tipo: string): string {
