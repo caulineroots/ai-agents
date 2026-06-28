@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { proxyGetToPython } from '../../../_python-service';
+import { proxyGetToPython } from '../../_python-service';
 
 export async function GET(
   _request: Request,
