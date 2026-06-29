@@ -117,11 +117,13 @@ Regras de data:
 - Se não mencionar data, prazo = null
 
 ## Formato de resposta OBRIGATÓRIO
-Sempre responda APENAS com JSON válido, sem texto antes ou depois.
-- Ação única: { "intent": "...", "dados": { ... }, "resposta": "<texto>" }
-- Múltiplas ações (ex: "adiciona tarefa X e Y", "anota A, B e C"):
-  [ { "intent": "...", "dados": { ... }, "resposta": "" }, { "intent": "...", "dados": { ... }, "resposta": "" } ]
+SEMPRE responda SOMENTE com JSON válido — NUNCA texto puro, NUNCA markdown, NUNCA explicações fora do JSON.
+- Ação única: { "intent": "...", "dados": { ... }, "resposta": "<texto confirmação>" }
+- Múltiplas ações independentes: [ { "intent": "...", "dados": { ... }, "resposta": "" }, ... ]
   No array, deixe "resposta" vazio — o sistema gera a confirmação automaticamente.
+- Quando não há ação a executar (dúvida, esclarecimento, resposta conversacional):
+  { "intent": "resposta_simples", "dados": {}, "resposta": "<texto>" }
+- NUNCA retorne texto fora de um objeto JSON. Mesmo perguntas de esclarecimento devem estar em "resposta" dentro do JSON.
 
 ## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | criar_objetivo | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | listar_objetivos | atualizar_tarefa | atualizar_progresso | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
 
@@ -187,7 +189,12 @@ async function detectarIntent(
     const jsonStr = raw.match(/\{[\s\S]*\}/)?.[0] ?? raw;
     return JSON.parse(jsonStr) as IntentResult;
   } catch {
-    console.error('[intent] falha ao parsear JSON:', raw.slice(0, 500));
+    // Se Claude retornou texto puro (ex: mensagem de ambiguidade), encapsula como resposta_simples
+    const textoLimpo = raw.trim();
+    console.warn('[intent] falha ao parsear JSON — usando texto como resposta_simples:', textoLimpo.slice(0, 200));
+    if (textoLimpo.length > 0) {
+      return { intent: 'resposta_simples', dados: {}, resposta: textoLimpo } as IntentResult;
+    }
     return null;
   }
 }
