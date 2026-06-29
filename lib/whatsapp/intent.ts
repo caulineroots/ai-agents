@@ -173,14 +173,11 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
 
   switch (intent) {
     case 'criar_tarefa': {
-      const titulo = dados.titulo as string | null;
-      if (!titulo?.trim()) {
-        return 'Não consegui identificar o título da tarefa. Pode repetir com mais detalhes?';
-      }
+      const titulo = (dados.titulo as string | null)?.trim() || 'Tarefa sem título';
 
       const prazoHora = (dados.prazo_hora as string) ?? undefined;
 
-      const doc = await criarTarefa(titulo.trim(), {
+      const doc = await criarTarefa(titulo, {
         prazo: (dados.prazo as string) ?? undefined,
         prazo_hora: prazoHora,
         urgencia: (dados.urgencia as 'baixa' | 'media' | 'alta') ?? 'media',
@@ -227,12 +224,9 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     }
 
     case 'criar_lead': {
-      const nome = dados.nome as string | null;
-      if (!nome?.trim()) {
-        return 'Não consegui identificar o nome do lead. Pode repetir?';
-      }
+      const nome = (dados.nome as string | null)?.trim() || 'Lead sem nome';
 
-      const doc = await criarLead(nome.trim(), {
+      const doc = await criarLead(nome, {
         empresa: (dados.empresa as string) ?? undefined,
         telefone: (dados.telefone as string) ?? undefined,
         interesse: (dados.interesse as string) ?? undefined,
@@ -243,16 +237,14 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       }
 
       const empresaStr = dados.empresa ? ` (${dados.empresa as string})` : '';
-      return `✓ Lead salvo\nNome: ${nome}${empresaStr}`;
+      const avisoNome = nome === 'Lead sem nome' ? '\n⚠ Nome não informado — atualize depois.' : '';
+      return `✓ Lead salvo\nNome: ${nome}${empresaStr}${avisoNome}`;
     }
 
     case 'criar_projeto': {
-      const nome = dados.nome as string | null;
-      if (!nome?.trim()) {
-        return 'Não consegui identificar o nome do projeto. Pode repetir?';
-      }
+      const nome = (dados.nome as string | null)?.trim() || 'Projeto sem nome';
 
-      const doc = await criarProjeto(nome.trim(), {
+      const doc = await criarProjeto(nome, {
         cliente: (dados.cliente as string) ?? undefined,
         status: (dados.status as 'ativo' | 'pausado' | 'concluido') ?? 'ativo',
         valor_estimado: (dados.valor_estimado as number) ?? undefined,
@@ -263,21 +255,17 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       }
 
       const clienteStr = dados.cliente ? `\nCliente: ${dados.cliente as string}` : '';
-      return `✓ Projeto salvo\nNome: ${nome}${clienteStr}\nStatus: ${(dados.status as string) ?? 'ativo'}`;
+      const avisoNomeProjeto = nome === 'Projeto sem nome' ? '\n⚠ Nome não informado — atualize depois.' : '';
+      return `✓ Projeto salvo\nNome: ${nome}${clienteStr}\nStatus: ${(dados.status as string) ?? 'ativo'}${avisoNomeProjeto}`;
     }
 
     case 'criar_financeiro': {
-      const descricao = dados.descricao as string | null;
-      if (!descricao?.trim()) {
-        return 'Não consegui identificar a descrição do lançamento. Pode repetir?';
-      }
-      if (!dados.valor || isNaN(Number(dados.valor))) {
-        return 'Não consegui identificar o valor. Pode repetir com o valor numérico?';
-      }
+      const descricao = (dados.descricao as string | null)?.trim() || 'Lançamento sem descrição';
+      const valor = dados.valor && !isNaN(Number(dados.valor)) ? Number(dados.valor) : 0;
 
-      const doc = await criarFinanceiro(descricao.trim(), {
-        valor: dados.valor as number,
-        tipo: dados.tipo as 'receita' | 'despesa',
+      const doc = await criarFinanceiro(descricao, {
+        valor,
+        tipo: (dados.tipo as 'receita' | 'despesa') ?? 'despesa',
         projeto: (dados.projeto as string) ?? undefined,
       });
 
@@ -286,7 +274,8 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       }
 
       const sinal = (dados.tipo as string) === 'receita' ? '+' : '-';
-      return `✓ Financeiro salvo\n${sinal} R$${(dados.valor as number).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} — ${descricao}`;
+      const avisoValor = valor === 0 ? '\n⚠ Valor não informado — atualize depois.' : '';
+      return `✓ Financeiro salvo\n${sinal} R$${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} — ${descricao}${avisoValor}`;
     }
 
     case 'listar_tarefas': {
