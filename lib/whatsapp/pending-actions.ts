@@ -19,9 +19,12 @@ export async function criarPendingAction(
   type: PendingAction['type'],
   metadata: Record<string, unknown>,
   ttlMinutos = 10,
+  cancelarAnterior = true,
 ): Promise<PendingAction | null> {
-  // Cancela qualquer ação pendente anterior do mesmo phone+type
-  await cancelarPendingAction(phone, type);
+  // task_check permite múltiplos simultâneos (um por tarefa)
+  if (cancelarAnterior) {
+    await cancelarPendingAction(phone, type);
+  }
 
   const expiresAt = new Date(Date.now() + ttlMinutos * 60 * 1000).toISOString();
 
@@ -37,6 +40,26 @@ export async function criarPendingAction(
   }
 
   return data as PendingAction;
+}
+
+/** Retorna TODAS as task_checks pendentes de um phone, ordenadas da mais antiga para a mais recente */
+export async function getTodasTaskChecks(phone: string): Promise<PendingAction[]> {
+  const now = new Date().toISOString();
+
+  const { data } = await supabase
+    .from('pending_actions')
+    .select('*')
+    .eq('phone', phone)
+    .eq('type', 'task_check')
+    .gt('expires_at', now)
+    .order('created_at', { ascending: true });
+
+  return (data ?? []) as PendingAction[];
+}
+
+/** Cancela uma task_check específica pelo id */
+export async function cancelarPendingActionById(id: string): Promise<void> {
+  await supabase.from('pending_actions').delete().eq('id', id);
 }
 
 export async function getPendingAction(

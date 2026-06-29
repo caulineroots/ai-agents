@@ -296,10 +296,11 @@ async function processarTaskChecks(
     if (!ok) continue;
 
     // Cria pending action para capturar a resposta no webhook (TTL 4h)
+    // Permite múltiplas task_checks simultâneas (cancelarAnterior = false)
     await criarPendingAction(phone, 'task_check', {
       task_id: tarefa.id,
       task_title: tarefa.title,
-    }, 240);
+    }, 240, false);
 
     await marcarEnviado(phone, refKey);
     enviados++;
@@ -337,15 +338,16 @@ async function processarTaskChecksForced(phone: string, hoje: string): Promise<n
       .eq('phone', phone)
       .eq('ref_key', refKey);
 
-    const msg = `⏰ *Check de tarefa*\n\n"${tarefa.title}" estava programada para às ${prazoHora}.\n\nFoi concluída?\n\nResponda:\n*SIM* — concluída ✅\n*ADIADO* — ainda vou fazer ⏸️\n*CANCELADO* — não vou mais fazer ❌`;
+    const msg = `⏰ *Check de tarefa*\n\n"${tarefa.title}" estava programada para às ${prazoHora}.\n\nFoi concluída? Responda:\n*SIM* — concluída ✅\n*ADIADO* — ainda vou fazer ⏸️\n*CANCELADO* — não vou mais fazer ❌`;
 
     const ok = await enviar(phone, msg);
     if (!ok) continue;
 
+    // Permite múltiplas task_checks simultâneas
     await criarPendingAction(phone, 'task_check', {
       task_id: tarefa.id,
       task_title: tarefa.title,
-    }, 240);
+    }, 240, false);
 
     await marcarEnviado(phone, refKey);
     enviados++;

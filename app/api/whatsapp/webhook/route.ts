@@ -9,6 +9,8 @@ import {
   getPendingAction,
   getAnyPendingAction,
   cancelarPendingAction,
+  cancelarPendingActionById,
+  getTodasTaskChecks,
 } from '@/lib/whatsapp/pending-actions';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
@@ -161,19 +163,29 @@ async function handleOwnerInterceptors(
   // ── Verificar pending actions existentes primeiro ──────────────────────────
 
   // Estado: aguardando confirmação de tarefa (task_check do briefing diário)
-  const taskCheck = await getPendingAction(numero, 'task_check');
-  if (taskCheck) {
-    const taskId = taskCheck.metadata.task_id as string;
-    const taskTitle = taskCheck.metadata.task_title as string;
+  const taskChecks = await getTodasTaskChecks(numero);
+  if (taskChecks.length > 0) {
+    // Detecta intenção por NLP básico (aceita linguagem natural)
+    const txt = textoNorm;
+    let intencao: 'sim' | 'adiado' | 'cancelado' | null = null;
 
-    const respostasValidas = ['sim', 'adiado', 'cancelado'];
-    if (respostasValidas.includes(textoNorm)) {
-      const statusMap: Record<string, string> = {
-        sim: 'concluida',
-        adiado: 'pendente',
-        cancelado: 'pendente',
-      };
-      const novoStatus = statusMap[textoNorm];
+    if (/\b(sim|s|conclu[ií]d[ao]|fiz|feito|feita|pronto|pronta|ok|done|foi|já)\b/.test(txt)) {
+      intencao = 'sim';
+    } else if (/\b(adiad[ao]|adiei|adia|depois|amanhã|amanha|mais tarde|adiou|ainda)\b/.test(txt)) {
+      intencao = 'adiado';
+    } else if (/\b(cancelad[ao]|cancelei|cancela|n[aã]o|nao|nope|desistiu|desisti)\b/.test(txt)) {
+      intencao = 'cancelado';
+    }
+
+    if (intencao) {
+      const statusMap = { sim: 'concluida', adiado: 'pendente', cancelado: 'pendente' } as const;
+      const emojiMap = { sim: '✅', adiado: '⏸️', cancelado: '❌' } as const;
+      const labelMap = { sim: 'concluída', adiado: 'adiado', cancelado: 'cancelado' } as const;
+
+      // Resolve a mais antiga primeiro
+      const check = taskChecks[0];
+      const taskId = check.metadata.task_id as string;
+      const taskTitle = check.metadata.task_title as string;
 
       const { data: tarefaAtual } = await supabase
         .from('vault_documents')
@@ -185,23 +197,31 @@ async function handleOwnerInterceptors(
         await supabase
           .from('vault_documents')
           .update({
-            metadata: { ...(tarefaAtual.metadata as Record<string, unknown>), status: novoStatus },
+            metadata: { ...(tarefaAtual.metadata as Record<string, unknown>), status: statusMap[intencao] },
             updated_at: new Date().toISOString(),
           })
           .eq('id', taskId);
       }
 
-      await cancelarPendingAction(numero, 'task_check');
+      await cancelarPendingActionById(check.id);
 
-      const emojiMap: Record<string, string> = {
-        sim: '✅',
-        adiado: '⏸️',
-        cancelado: '❌',
-      };
-      return `${emojiMap[textoNorm]} "${taskTitle}" marcada como ${textoNorm === 'sim' ? 'concluída' : textoNorm}.`;
+      const confirmacao = `${emojiMap[intencao]} "${taskTitle}" marcada como ${labelMap[intencao]}.`;
+
+      // Se ainda houver mais task_checks pendentes, pergunta sobre a próxima
+      const restantes = taskChecks.slice(1);
+      if (restantes.length > 0) {
+        const proxima = restantes[0];
+        const proximaTitulo = proxima.metadata.task_title as string;
+        const proximaHora = proxima.metadata.task_hora as string ?? '';
+        return `${confirmacao}\n\nE a tarefa "${proximaTitulo}"${proximaHora ? ` (${proximaHora})` : ''}? Foi concluída?\n\n*SIM* ✅ · *ADIADO* ⏸️ · *CANCELADO* ❌`;
+      }
+
+      return confirmacao;
     }
 
-    return `Responda SIM (concluída), ADIADO ou CANCELADO para a tarefa "${taskTitle}".`;
+    // Intenção não reconhecida — lembra sobre a tarefa mais antiga pendente
+    const taskTitle = taskChecks[0].metadata.task_title as string;
+    return `Responda *SIM*, *ADIADO* ou *CANCELADO* para a tarefa "${taskTitle}".`;
   }
 
   // Estado: aguardando seleção de item para deletar (múltiplos matches)
