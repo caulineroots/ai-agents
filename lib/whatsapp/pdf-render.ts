@@ -7,8 +7,15 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
   console.log('[pdf-render] importando dependências...');
   const path = await import('path');
   const canvasModule = await import('canvas');
-  const { createCanvas } = canvasModule;
+  const { createCanvas, Image: CanvasImage } = canvasModule;
   console.log('[pdf-render] node-canvas importado. createCanvas type:', typeof createCanvas);
+
+  // pdfjs usa new Image() internamente para renderizar inline images — não existe no Node.js.
+  // Expõe o Image do node-canvas globalmente antes de qualquer chamada ao pdfjs.
+  if (typeof global.Image === 'undefined') {
+    (global as Record<string, unknown>).Image = CanvasImage;
+    console.log('[pdf-render] global.Image patcheado com node-canvas Image');
+  }
 
   const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const { getDocument, GlobalWorkerOptions } = pdfjsModule;
@@ -67,7 +74,7 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
   for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
     console.log(`[pdf-render] renderizando página ${pageNum}/${pdfDoc.numPages}`);
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const viewport = page.getViewport({ scale: 1.5 });
     console.log(`[pdf-render] viewport: ${Math.ceil(viewport.width)}x${Math.ceil(viewport.height)}`);
 
     const cc = nodeCanvasFactory.create(viewport.width, viewport.height);
