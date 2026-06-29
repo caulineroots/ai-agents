@@ -5,47 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
-
-// ─── Renderização do PDF ──────────────────────────────────────────────────────
-
-async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
-  // Importações dinâmicas para evitar problemas com SSR/Edge
-  const path = await import('path');
-  const { createCanvas } = await import('canvas');
-  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-  // Aponta para o worker real em node_modules — evita o erro de fake worker
-  const workerPath = path.resolve(
-    process.cwd(),
-    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
-  );
-  GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
-
-  const data = new Uint8Array(pdfBuffer);
-  const pdfDoc = await getDocument({ data, useSystemFonts: true }).promise;
-
-  const jpegs: Buffer[] = [];
-
-  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 });
-
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-    const ctx = canvas.getContext('2d');
-
-    await page.render({
-      canvasContext: ctx as unknown as CanvasRenderingContext2D,
-      viewport,
-    }).promise;
-
-    const jpegBuf = canvas.toBuffer('image/jpeg', { quality: 0.85 });
-    jpegs.push(jpegBuf);
-    page.cleanup();
-  }
-
-  await pdfDoc.destroy();
-  return jpegs;
-}
+import { renderPdfToJpegs } from '@/lib/whatsapp/pdf-render';
 
 // ─── Chamada à pipeline de marcenaria ────────────────────────────────────────
 

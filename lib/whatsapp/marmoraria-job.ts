@@ -8,6 +8,7 @@
  */
 
 import type { ResultadoOrcamento, ItemOrcado } from '@/lib/orcamento/types';
+import { renderPdfToJpegs } from '@/lib/whatsapp/pdf-render';
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL!;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY!;
@@ -82,45 +83,6 @@ function formatarResultado(resultado: ResultadoOrcamento, projeto: string): stri
   }
 
   return linhas.join('\n');
-}
-
-// ─── Renderização do PDF ──────────────────────────────────────────────────────
-
-async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
-  const path = await import('path');
-  const { createCanvas } = await import('canvas');
-  const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-  // Aponta para o worker real em node_modules — evita o erro de fake worker
-  const workerPath = path.resolve(
-    process.cwd(),
-    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
-  );
-  GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
-
-  const data = new Uint8Array(pdfBuffer);
-  const pdfDoc = await getDocument({ data, useSystemFonts: true }).promise;
-
-  const jpegs: Buffer[] = [];
-
-  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-    const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 2.0 });
-
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-    const ctx = canvas.getContext('2d');
-
-    await page.render({
-      canvasContext: ctx as unknown as CanvasRenderingContext2D,
-      viewport,
-    }).promise;
-
-    jpegs.push(canvas.toBuffer('image/jpeg', { quality: 0.85 }));
-    page.cleanup();
-  }
-
-  await pdfDoc.destroy();
-  return jpegs;
 }
 
 // ─── Chamada à pipeline de marmoraria ────────────────────────────────────────
