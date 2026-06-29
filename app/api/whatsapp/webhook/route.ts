@@ -1,5 +1,6 @@
 import { processarMensagem, carregarHistorico, salvarMensagem } from '@/lib/whatsapp/bot';
 import { processarPdfMarcenaria } from '@/lib/whatsapp/marcenaria-job';
+import { processarPdfMarmoraria } from '@/lib/whatsapp/marmoraria-job';
 import { processarComBrain } from '@/lib/whatsapp/intent';
 import { getAuthUrl, calendarConectado } from '@/lib/whatsapp/calendar';
 import { supabase } from '@/lib/supabase/client';
@@ -433,7 +434,18 @@ export async function POST(request: Request) {
         await enviarResposta(numero, 'Recebi o PDF mas não consegui baixá-lo. Tenta enviar novamente.');
         return Response.json({ ok: true });
       }
-      await processarPdfJob(numero, instance, pdfBuffer, filename);
+
+      if (OWNER_PHONE && numero === OWNER_PHONE) {
+        // Marmoraria — processa e responde diretamente no WhatsApp
+        await enviarResposta(numero, '📄 PDF recebido! Processando orçamento de marmoraria... Pode levar 1-2 minutos.');
+        processarPdfMarmoraria(numero, pdfBuffer, filename).catch((err) => {
+          console.error('[webhook] erro no processamento do PDF de marmoraria:', err);
+        });
+      } else {
+        // Marcenaria — resultado vai para o PC display via whatsapp_jobs
+        await processarPdfJob(numero, instance, pdfBuffer, filename);
+      }
+
       return Response.json({ ok: true });
     }
 
