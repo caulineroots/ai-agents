@@ -1,99 +1,58 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
-function LoginForm() {
-  const router = useRouter();
+const errosMensagens: Record<string, string> = {
+  token_invalido: 'Link inválido ou não encontrado.',
+  token_usado: 'Este link já foi utilizado. Solicite um novo pelo WhatsApp.',
+  token_expirado: 'Este link expirou (válido por 15 minutos). Solicite um novo pelo WhatsApp.',
+};
+
+function LoginContent() {
   const params = useSearchParams();
-  const from = params.get('from') ?? '/dashboard';
-
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/dashboard/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-
-      if (res.ok) {
-        router.replace(from);
-      } else {
-        const data = await res.json();
-        setError(data.error ?? 'Senha incorreta');
-      }
-    } catch {
-      setError('Erro de conexão. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const erro = params.get('erro');
+  const mensagemErro = erro ? (errosMensagens[erro] ?? 'Erro ao acessar o painel.') : null;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm text-zinc-400 mb-1.5" htmlFor="password">
-            Senha de acesso
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2.5 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-violet-500 transition-colors text-sm"
-            autoFocus
-            required
-          />
+    <div className="min-h-screen bg-stone-950 flex items-center justify-center px-4">
+      <div className="max-w-md w-full text-center space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold text-stone-100">Acesso ao Painel</h1>
+          <p className="text-stone-400 text-sm">
+            O acesso é feito via link enviado pelo WhatsApp.
+          </p>
         </div>
 
-        {error && (
-          <p className="text-rose-400 text-sm">{error}</p>
-        )}
+        <div className="bg-stone-900 border border-stone-800 rounded-xl p-6 space-y-4">
+          <div className="text-4xl">📱</div>
+          <p className="text-stone-300 text-sm leading-relaxed">
+            Envie uma mensagem para o assistente no WhatsApp dizendo{' '}
+            <span className="font-mono bg-stone-800 px-2 py-0.5 rounded text-stone-100 text-xs">
+              painel
+            </span>{' '}
+            ou{' '}
+            <span className="font-mono bg-stone-800 px-2 py-0.5 rounded text-stone-100 text-xs">
+              dashboard
+            </span>{' '}
+            e você receberá um link de acesso exclusivo válido por 15 minutos.
+          </p>
+        </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded transition-colors text-sm"
-        >
-          {loading ? 'Entrando...' : 'Entrar'}
-        </button>
-      </form>
+        {mensagemErro && (
+          <div className="bg-red-950/50 border border-red-900 rounded-lg p-4">
+            <p className="text-red-400 text-sm">{mensagemErro}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <main className="min-h-screen bg-black flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        {/* Logo / title */}
-        <div className="mb-8 text-center">
-          <p className="text-xs tracking-widest text-violet-400 uppercase mb-2">Cauline Roots</p>
-          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Dashboard</h1>
-          <p className="text-sm text-zinc-500 mt-1">Área restrita — acesso pessoal</p>
-        </div>
-
-        {/* Suspense wraps the component that uses useSearchParams */}
-        <Suspense fallback={
-          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 h-40 animate-pulse" />
-        }>
-          <LoginForm />
-        </Suspense>
-
-        <p className="text-center text-xs text-zinc-600 mt-6">
-          OrçamentarIA · Cauline Roots
-        </p>
-      </div>
-    </main>
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

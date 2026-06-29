@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
+import { getSessionPhone } from '@/lib/dashboard/session';
+
+function getPhone(request: NextRequest): string | null {
+  // Middleware injeta o phone como header interno
+  const fromHeader = request.headers.get('x-session-phone');
+  if (fromHeader) return fromHeader;
+  // Fallback direto pelo cookie (para chamadas sem middleware, ex: fetch server-side)
+  return getSessionPhone(request.cookies.get('dash_session')?.value);
+}
 
 function unauthorized() {
   return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 }
 
-function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('dash_session');
-  const password = process.env.DASHBOARD_PASSWORD ?? 'cauline2026';
-  return session?.value === password;
-}
-
 export async function GET(request: NextRequest) {
-  if (!checkAuth(request)) return unauthorized();
+  const phone = getPhone(request);
+  if (!phone) return unauthorized();
 
   const { searchParams } = request.nextUrl;
   const type = searchParams.get('type');
@@ -21,6 +25,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('vault_documents')
     .select('*')
+    .eq('phone', phone)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -36,7 +41,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!checkAuth(request)) return unauthorized();
+  const phone = getPhone(request);
+  if (!phone) return unauthorized();
 
   const body = await request.json();
   const { type, title, content, metadata } = body;
@@ -47,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabase
     .from('vault_documents')
-    .insert({ type, title, content: content ?? null, metadata: metadata ?? {} })
+    .insert({ phone, type, title, content: content ?? null, metadata: metadata ?? {} })
     .select()
     .single();
 

@@ -6,6 +6,7 @@ import { executarCursorAgent } from '@/lib/whatsapp/cursor-agent';
 import { getAuthUrl, calendarConectado } from '@/lib/whatsapp/calendar';
 import { supabase } from '@/lib/supabase/client';
 import { getPrompt, setPrompt, listPrompts } from '@/lib/whatsapp/prompts-db';
+import { createSession } from '@/lib/dashboard/session';
 import {
   criarPendingAction,
   getPendingAction,
@@ -17,6 +18,47 @@ import {
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const OWNER_PHONE = process.env.OWNER_PHONE ?? '';
+const ALLOWED_PHONES = new Set(
+  (process.env.ALLOWED_PHONES ?? '').split(',').map(p => p.trim()).filter(Boolean),
+);
+
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXTAUTH_URL ?? 'https://ai.caulineroots.com';
+
+// ─── Detecção de comandos por linguagem natural ───────────────────────────────
+
+const DASHBOARD_REGEX = /\b(dashboard|painel|link|acesso|acessar|entrar|abrir|manda o link|ver o painel|quero ver|painel visual|sistema|meu painel)\b/i;
+const MENU_REGEX = /\b(menu|ajuda|help|o que (você|vc) (pode|consegue|faz)|o que (está|estou|ta) conectado|opções|funcionalidades|como funciona|tudo que|todos os comandos|comandos|capabilities)\b/i;
+
+function gerarMensagemMenu(): string {
+  return `Olá! Aqui está tudo que posso fazer por você:
+
+📋 *Tarefas* — adicionar, listar, atualizar, marcar como concluída
+👤 *Leads / Contatos* — salvar, acompanhar status, follow-up
+📁 *Projetos* — criar e gerenciar projetos
+💰 *Financeiro* — registrar entradas e saídas
+🎯 *Objetivos* — definir metas e acompanhar progresso
+📊 *Dashboard (Painel)* — acesso visual completo → manda "painel" para receber o link
+📄 *Orçamento PDF* — envia um PDF de marmoraria e eu calculo por ambiente
+📅 *Lembretes* — automáticos ao criar tarefas com prazo
+
+Alguns exemplos:
+• "anota tarefa: ligar pro João amanhã às 14h"
+• "novo lead: Maria Silva da empresa X"
+• "gastei R$500 no fornecedor Y"
+• "minha meta é fazer 5 vendas essa semana"
+• "meus leads" / "minhas tarefas"
+• "painel" → link de acesso ao dashboard`;
+}
+
+async function gerarMagicLink(phone: string): Promise<string> {
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+  await supabase.from('dashboard_tokens').insert({ token, phone, expires_at: expiresAt });
+
+  const link = `${BASE_URL}/api/dashboard/magic-login?token=${token}`;
+  return `🔗 Seu link de acesso ao painel:\n${link}\n\n⏱ Válido por 15 minutos, uso único.`;
+}
 
 export const runtime = 'nodejs';
 
@@ -426,6 +468,11 @@ export async function POST(request: Request) {
 
     const instance = body?.instance ?? EVOLUTION_INSTANCE;
 
+    // ── Whitelist: ignora números não autorizados ──────────────────────────────
+    const isOwner = OWNER_PHONE && numero === OWNER_PHONE;
+    const isAllowed = isOwner || ALLOWED_PHONES.has(numero);
+    if (!isAllowed) return Response.json({ ok: true });
+
     // ── Documento PDF ──────────────────────────────────────────────────────────
     const doc = data?.message?.documentMessage;
     if (doc?.mimetype === 'application/pdf') {
@@ -484,8 +531,6 @@ export async function POST(request: Request) {
     const texto = data?.message?.conversation || data?.message?.extendedTextMessage?.text;
     if (!texto) return Response.json({ ok: true });
 
-    const isOwner = OWNER_PHONE && numero === OWNER_PHONE;
-
     if (isOwner) {
       // Comando especial: conectar Google Calendar
       const textoNorm = texto.trim().toLowerCase();
@@ -501,6 +546,19 @@ export async function POST(request: Request) {
             await enviarResposta(numero, 'Google Calendar não configurado. Adicione GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local.');
           }
         }
+        return Response.json({ ok: true });
+      }
+
+      // ── Menu de opções ─────────────────────────────────────────────────────
+      if (MENU_REGEX.test(texto)) {
+        await enviarResposta(numero, gerarMensagemMenu());
+        return Response.json({ ok: true });
+      }
+
+      // ── Magic link do dashboard ────────────────────────────────────────────
+      if (DASHBOARD_REGEX.test(texto)) {
+        const linkMsg = await gerarMagicLink(numero);
+        await enviarResposta(numero, linkMsg);
         return Response.json({ ok: true });
       }
 
@@ -533,6 +591,29 @@ export async function POST(request: Request) {
       await salvarMensagem(numero, 'user', texto);
       await salvarMensagem(numero, 'assistant', resposta);
 
+      await enviarResposta(numero, resposta);
+      return Response.json({ ok: true });
+    }
+
+    // ── Allowed phones: acesso Brain com dados isolados por phone ─────────────
+    if (ALLOWED_PHONES.has(numero)) {
+      // Menu e dashboard também disponíveis para allowed phones
+      if (MENU_REGEX.test(texto)) {
+        await enviarResposta(numero, gerarMensagemMenu());
+        return Response.json({ ok: true });
+      }
+
+      if (DASHBOARD_REGEX.test(texto)) {
+        const linkMsg = await gerarMagicLink(numero);
+        await enviarResposta(numero, linkMsg);
+        return Response.json({ ok: true });
+      }
+
+      // Brain mode com dados isolados por phone
+      const historico = await carregarHistorico(numero);
+      const resposta = await processarComBrain(historico, texto, numero);
+      await salvarMensagem(numero, 'user', texto);
+      await salvarMensagem(numero, 'assistant', resposta);
       await enviarResposta(numero, resposta);
       return Response.json({ ok: true });
     }

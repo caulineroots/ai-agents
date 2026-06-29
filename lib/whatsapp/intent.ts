@@ -78,7 +78,12 @@ export async function getBrainSystem(): Promise<string> {
   const tabelaDatas = `Hoje: ${hoje} (${diaHojeNome})\nPróximos dias:\n${proximosDias}`;
 
   // Snapshot leve de tarefas pendentes (injetado no contexto sem chamada extra ao Claude)
-  const tarefasPendentes = await listar('task', { status: 'pendente' }, 5);
+  // Usa phone vazio para getBrainSystem — o snapshot é apenas visual, sem isolamento crítico aqui
+  // O isolamento real acontece nos executores que recebem o phone correto
+  const OWNER_PHONE = process.env.OWNER_PHONE ?? '';
+  const tarefasPendentes = OWNER_PHONE
+    ? await listar(OWNER_PHONE, 'task', { status: 'pendente' }, 5)
+    : [];
   const snapshotTarefas = tarefasPendentes.length > 0
     ? `\n\n## Suas tarefas pendentes (use apenas se perguntado ou relevante)\n${formatarTarefas(tarefasPendentes)}`
     : '';
@@ -101,13 +106,16 @@ function buildFallbackPrompt(tabelaDatas: string): string {
 Seu papel: entender o que Roberto quer fazer e responder com um JSON contendo a ação e os dados extraídos da mensagem.
 
 ## Ferramentas disponíveis
-- SALVAR: tarefas, leads, projetos, financeiro — descreva e eu registro
-- LISTAR: pergunte suas tarefas, leads, projetos ou financeiro
+- SALVAR: tarefas, leads, projetos, financeiro, objetivos — descreva e eu registro
+- LISTAR: pergunte suas tarefas, leads, projetos, financeiro ou objetivos
 - DELETAR: "deleta a tarefa X" — dupla confirmação antes de executar
+- OBJETIVOS: crie metas (ex: "minha meta é fazer 5 vendas essa semana") e acompanhe progresso
+- DASHBOARD / PAINEL: acesse o painel visual completo — diga "dashboard", "painel", "manda o link" etc. para receber o link de acesso
 - PDF → ORÇAMENTO MARMORARIA: envie um PDF de projeto de marmoraria (tampos, rodapés, revestimentos) — o orçamento detalhado por ambiente chega de volta aqui no WhatsApp em 1-2 minutos
 - PDF → ORÇAMENTO MARCENARIA: PDFs de marcenaria enviados por clientes são processados e o resultado aparece no PC automaticamente
 - GOOGLE CALENDAR: conecte via /calendar, cria eventos ao salvar tarefas com prazo
 - PROMPTS: comando "prompt" → ver/editar prompts do sistema
+- MENU / AJUDA: diga "o que você pode fazer", "menu", "ajuda" ou "opções" para ver esta lista
 
 ## Referência de datas (OBRIGATÓRIO usar essa tabela)
 ${tabelaDatas}
@@ -214,7 +222,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
 
       const prazoHora = (dados.prazo_hora as string) ?? undefined;
 
-      const doc = await criarTarefa(titulo, {
+      const doc = await criarTarefa(phone, titulo, {
         prazo: (dados.prazo as string) ?? undefined,
         prazo_hora: prazoHora,
         urgencia: (dados.urgencia as 'baixa' | 'media' | 'alta') ?? 'media',
@@ -234,7 +242,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
           );
           if (eventId) {
             await import('./vault').then(({ atualizar }) =>
-              atualizar(doc.id, {
+              atualizar(phone, doc.id, {
                 metadata: { ...doc.metadata, calendar_event_id: eventId },
               }),
             );
@@ -263,7 +271,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     case 'criar_lead': {
       const nome = (dados.nome as string | null)?.trim() || 'Lead sem nome';
 
-      const doc = await criarLead(nome, {
+      const doc = await criarLead(phone, nome, {
         empresa: (dados.empresa as string) ?? undefined,
         telefone: (dados.telefone as string) ?? undefined,
         interesse: (dados.interesse as string) ?? undefined,
@@ -281,7 +289,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     case 'criar_projeto': {
       const nome = (dados.nome as string | null)?.trim() || 'Projeto sem nome';
 
-      const doc = await criarProjeto(nome, {
+      const doc = await criarProjeto(phone, nome, {
         cliente: (dados.cliente as string) ?? undefined,
         status: (dados.status as 'ativo' | 'pausado' | 'concluido') ?? 'ativo',
         valor_estimado: (dados.valor_estimado as number) ?? undefined,
@@ -300,7 +308,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       const descricao = (dados.descricao as string | null)?.trim() || 'Lançamento sem descrição';
       const valor = dados.valor && !isNaN(Number(dados.valor)) ? Number(dados.valor) : 0;
 
-      const doc = await criarFinanceiro(descricao, {
+      const doc = await criarFinanceiro(phone, descricao, {
         valor,
         tipo: (dados.tipo as 'receita' | 'despesa') ?? 'despesa',
         projeto: (dados.projeto as string) ?? undefined,
@@ -319,7 +327,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       const querConcluidas = dados.status === 'concluida' ||
         /conclu[ií]d/i.test((dados.busca ?? '') as string);
 
-      const todas = await listar('task', undefined, 30);
+      const todas = await listar(phone, 'task', undefined, 30);
 
       let exibir: VaultDocument[];
       let sufixo = '';
@@ -346,7 +354,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       const buscaTitulo = ((dados.busca_titulo as string | null) ?? '').toLowerCase().trim();
       if (!buscaTitulo) return 'Me diga qual tarefa quer atualizar.';
 
-      const todas = await listar('task', undefined, 30);
+      const todas = await listar(phone, 'task', undefined, 30);
       const encontrada = todas.find(d => d.title.toLowerCase().includes(buscaTitulo));
 
       if (!encontrada) {
@@ -380,7 +388,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
         prazoMudou = true;
       }
 
-      const ok = await atualizar(encontrada.id, { metadata: novaMeta });
+      const ok = await atualizar(phone, encontrada.id, { metadata: novaMeta });
       if (!ok) return 'Erro ao atualizar a tarefa. Tenta de novo.';
 
       // Reagenda lembretes se prazo/horário mudou
@@ -405,19 +413,19 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     case 'listar_leads': {
       const filtros: Record<string, unknown> = {};
       if (dados.status) filtros.status = dados.status;
-      const docs = await listar('lead', Object.keys(filtros).length ? filtros : undefined, 15);
+      const docs = await listar(phone, 'lead', Object.keys(filtros).length ? filtros : undefined, 15);
       const lista = formatarLeads(docs);
       return `Leads:\n${lista}`;
     }
 
     case 'listar_projetos': {
-      const docs = await listar('project', undefined, 10);
+      const docs = await listar(phone, 'project', undefined, 10);
       const lista = formatarProjetos(docs);
       return `Projetos:\n${lista}`;
     }
 
     case 'listar_financeiro': {
-      const docs = await listar('financial', undefined, 20);
+      const docs = await listar(phone, 'financial', undefined, 20);
       const lista = formatarFinanceiro(docs);
       return `Financeiro:\n${lista}`;
     }
@@ -431,7 +439,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
         : 1;
       const keywords = Array.isArray(dados.keywords) ? dados.keywords as string[] : [];
 
-      const doc = await criarObjetivo(descricao, {
+      const doc = await criarObjetivo(phone, descricao, {
         periodo,
         unidade,
         meta_valor,
@@ -444,7 +452,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     }
 
     case 'listar_objetivos': {
-      const docs = await listar('goal', undefined, 10);
+      const docs = await listar(phone, 'goal', undefined, 10);
       const lista = formatarObjetivos(docs);
       return `Objetivos:\n${lista}`;
     }
@@ -455,7 +463,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
         : 1;
 
       // Busca objetivos ativos ordenados por criação (mais recente primeiro)
-      const goals = await listar('goal', undefined, 10);
+      const goals = await listar(phone, 'goal', undefined, 10);
       const ativo = goals.find((g) => (g.metadata as GoalMetadata).status === 'ativo');
 
       if (!ativo) {
@@ -464,7 +472,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
 
       const meta = ativo.metadata as GoalMetadata;
       const novoProgresso = (meta.progresso_atual ?? 0) + incremento;
-      const ok = await atualizar(ativo.id, {
+      const ok = await atualizar(phone, ativo.id, {
         metadata: { ...meta, progresso_atual: novoProgresso },
       });
 
@@ -486,7 +494,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
 
       const tiposValidos = ['task', 'lead', 'project', 'financial'];
 
-      const matches = await buscarParaDeletar(buscaTitulo.trim(), tipo && tiposValidos.includes(tipo) ? tipo : null);
+      const matches = await buscarParaDeletar(phone, buscaTitulo.trim(), tipo && tiposValidos.includes(tipo) ? tipo : null);
 
       if (!matches) {
         return 'Erro ao buscar o item. Tenta de novo.';
@@ -579,6 +587,7 @@ const STOPWORDS = new Set(['de', 'do', 'da', 'dos', 'das', 'com', 'para', 'por',
   'que', 'se', 'ao', 'aos', 'c', 'p', 'pra', 'pro']);
 
 async function buscarParaDeletar(
+  phone: string,
   busca: string,
   tipo: string | null,
 ): Promise<VaultDocument[] | null> {
@@ -586,6 +595,7 @@ async function buscarParaDeletar(
     let q = supabase
       .from('vault_documents')
       .select('id, title, type, metadata')
+      .eq('phone', phone)
       .ilike('title', filtro)
       .limit(5);
     if (tipo) q = q.eq('type', tipo) as typeof q;
@@ -606,7 +616,7 @@ async function buscarParaDeletar(
   if (palavras.length === 0) return [];
 
   // Carrega todos os itens do tipo e faz score por palavras que batem
-  let q = supabase.from('vault_documents').select('id, title, type, metadata').limit(50);
+  let q = supabase.from('vault_documents').select('id, title, type, metadata').eq('phone', phone).limit(50);
   if (tipo) q = q.eq('type', tipo) as typeof q;
   const { data: todos, error: err2 } = await q;
   if (err2 || !todos) return [];
@@ -665,8 +675,8 @@ export async function processarComBrain(
   }
 }
 
-export async function listarFormatado(type: 'task' | 'lead' | 'project' | 'financial' | 'goal'): Promise<string> {
-  const docs = await listar(type, undefined, 20);
+export async function listarFormatado(phone: string, type: 'task' | 'lead' | 'project' | 'financial' | 'goal'): Promise<string> {
+  const docs = await listar(phone, type, undefined, 20);
   switch (type) {
     case 'task': return formatarTarefas(docs);
     case 'lead': return formatarLeads(docs);

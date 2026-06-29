@@ -65,6 +65,7 @@ export interface GoalMetadata {
 // ─── CRUD genérico ────────────────────────────────────────────────────────────
 
 export async function criar(
+  phone: string,
   type: VaultType,
   title: string,
   content?: string,
@@ -72,7 +73,7 @@ export async function criar(
 ): Promise<VaultDocument | null> {
   const { data, error } = await supabase
     .from('vault_documents')
-    .insert({ type, title, content: content ?? null, metadata: metadata ?? {} })
+    .insert({ phone, type, title, content: content ?? null, metadata: metadata ?? {} })
     .select()
     .single();
 
@@ -84,6 +85,7 @@ export async function criar(
 }
 
 export async function listar(
+  phone: string,
   type?: VaultType,
   filtros?: Record<string, unknown>,
   limit = 20,
@@ -91,6 +93,7 @@ export async function listar(
   let query = supabase
     .from('vault_documents')
     .select('*')
+    .eq('phone', phone)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -113,13 +116,15 @@ export async function listar(
 }
 
 export async function atualizar(
+  phone: string,
   id: string,
   updates: Partial<{ title: string; content: string; metadata: Record<string, unknown> }>,
 ): Promise<boolean> {
   const { error } = await supabase
     .from('vault_documents')
     .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('phone', phone);
 
   if (error) {
     console.error('[vault] erro ao atualizar:', error);
@@ -128,8 +133,12 @@ export async function atualizar(
   return true;
 }
 
-export async function deletar(id: string): Promise<boolean> {
-  const { error } = await supabase.from('vault_documents').delete().eq('id', id);
+export async function deletar(phone: string, id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('vault_documents')
+    .delete()
+    .eq('id', id)
+    .eq('phone', phone);
   if (error) {
     console.error('[vault] erro ao deletar:', error);
     return false;
@@ -140,10 +149,11 @@ export async function deletar(id: string): Promise<boolean> {
 // ─── Helpers por módulo ───────────────────────────────────────────────────────
 
 export async function criarTarefa(
+  phone: string,
   titulo: string,
   meta?: TarefaMetadata,
 ): Promise<VaultDocument | null> {
-  return criar('task', titulo, undefined, {
+  return criar(phone, 'task', titulo, undefined, {
     prazo: meta?.prazo ?? null,
     prazo_hora: meta?.prazo_hora ?? null,
     urgencia: meta?.urgencia ?? 'media',
@@ -154,10 +164,11 @@ export async function criarTarefa(
 }
 
 export async function criarLead(
+  phone: string,
   nome: string,
   meta?: LeadMetadata,
 ): Promise<VaultDocument | null> {
-  return criar('lead', nome, undefined, {
+  return criar(phone, 'lead', nome, undefined, {
     empresa: meta?.empresa ?? null,
     telefone: meta?.telefone ?? null,
     interesse: meta?.interesse ?? null,
@@ -167,10 +178,11 @@ export async function criarLead(
 }
 
 export async function criarProjeto(
+  phone: string,
   nome: string,
   meta?: ProjetoMetadata,
 ): Promise<VaultDocument | null> {
-  return criar('project', nome, undefined, {
+  return criar(phone, 'project', nome, undefined, {
     cliente: meta?.cliente ?? null,
     status: meta?.status ?? 'ativo',
     valor_estimado: meta?.valor_estimado ?? null,
@@ -178,12 +190,13 @@ export async function criarProjeto(
 }
 
 export async function criarFinanceiro(
+  phone: string,
   descricao: string,
   meta: FinanceiroMetadata,
 ): Promise<VaultDocument | null> {
   const sinal = meta.tipo === 'receita' ? '+' : '-';
   const titulo = `${sinal} R$${meta.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} — ${descricao}`;
-  return criar('financial', titulo, descricao, {
+  return criar(phone, 'financial', titulo, descricao, {
     valor: meta.valor,
     tipo: meta.tipo,
     projeto: meta.projeto ?? null,
@@ -406,6 +419,7 @@ function semanaISO(date: Date = new Date()): string {
 }
 
 export async function criarObjetivo(
+  phone: string,
   descricao: string,
   meta: Omit<GoalMetadata, 'progresso_atual' | 'semana_ref' | 'mes_ref'> & Partial<Pick<GoalMetadata, 'semana_ref' | 'mes_ref'>>,
 ): Promise<VaultDocument | null> {
@@ -413,7 +427,7 @@ export async function criarObjetivo(
   const semana_ref = meta.periodo === 'semanal' ? semanaISO(agora) : undefined;
   const mes_ref = meta.periodo === 'mensal' ? agora.toISOString().slice(0, 7) : undefined;
 
-  return criar('goal', descricao, undefined, {
+  return criar(phone, 'goal', descricao, undefined, {
     periodo: meta.periodo,
     unidade: meta.unidade,
     meta_valor: meta.meta_valor,
@@ -445,12 +459,13 @@ export function formatarObjetivos(docs: VaultDocument[]): string {
 /**
  * Busca o objetivo semanal ativo no período atual.
  */
-export async function buscarObjetivoAtivo(): Promise<VaultDocument | null> {
+export async function buscarObjetivoAtivo(phone: string): Promise<VaultDocument | null> {
   const semana = semanaISO();
   const { data, error } = await supabase
     .from('vault_documents')
     .select('*')
     .eq('type', 'goal')
+    .eq('phone', phone)
     .order('created_at', { ascending: false })
     .limit(20);
 
