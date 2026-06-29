@@ -10,11 +10,16 @@ import { supabase } from '@/lib/supabase/client';
 
 async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
   // Importações dinâmicas para evitar problemas com SSR/Edge
+  const path = await import('path');
   const { createCanvas } = await import('canvas');
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-  // Modo sem worker para Node.js
-  GlobalWorkerOptions.workerSrc = '';
+  // Aponta para o worker real em node_modules — evita o erro de fake worker
+  const workerPath = path.resolve(
+    process.cwd(),
+    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+  );
+  GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
 
   const data = new Uint8Array(pdfBuffer);
   const pdfDoc = await getDocument({ data, useSystemFonts: true }).promise;

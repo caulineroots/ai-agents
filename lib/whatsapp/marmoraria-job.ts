@@ -87,10 +87,16 @@ function formatarResultado(resultado: ResultadoOrcamento, projeto: string): stri
 // ─── Renderização do PDF ──────────────────────────────────────────────────────
 
 async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
+  const path = await import('path');
   const { createCanvas } = await import('canvas');
   const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-  GlobalWorkerOptions.workerSrc = '';
+  // Aponta para o worker real em node_modules — evita o erro de fake worker
+  const workerPath = path.resolve(
+    process.cwd(),
+    'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+  );
+  GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
 
   const data = new Uint8Array(pdfBuffer);
   const pdfDoc = await getDocument({ data, useSystemFonts: true }).promise;
