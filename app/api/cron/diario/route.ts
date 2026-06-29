@@ -308,6 +308,52 @@ async function processarTaskChecks(
   return enviados;
 }
 
+/** Versão de teste: ignora janela de tempo, envia para todas as tarefas de hoje com prazo_hora */
+async function processarTaskChecksForced(phone: string, hoje: string): Promise<number> {
+  const { data } = await supabase
+    .from('vault_documents')
+    .select('id, title, metadata')
+    .eq('type', 'task');
+
+  if (!data) return 0;
+
+  const tarefasHoje = (data as VaultDoc[]).filter((t) => {
+    const m = t.metadata;
+    return m.prazo === hoje &&
+      m.prazo_hora &&
+      (m.status === 'pendente' || m.status === 'em_andamento');
+  });
+
+  let enviados = 0;
+
+  for (const tarefa of tarefasHoje) {
+    const prazoHora = tarefa.metadata.prazo_hora as string;
+    const refKey = `task_check_${hoje}_${tarefa.id}`;
+
+    // Apaga deduplicação para permitir reenvio no force
+    await supabase
+      .from('daily_briefings')
+      .delete()
+      .eq('phone', phone)
+      .eq('ref_key', refKey);
+
+    const msg = `⏰ *Check de tarefa*\n\n"${tarefa.title}" estava programada para às ${prazoHora}.\n\nFoi concluída?\n\nResponda:\n*SIM* — concluída ✅\n*ADIADO* — ainda vou fazer ⏸️\n*CANCELADO* — não vou mais fazer ❌`;
+
+    const ok = await enviar(phone, msg);
+    if (!ok) continue;
+
+    await criarPendingAction(phone, 'task_check', {
+      task_id: tarefa.id,
+      task_title: tarefa.title,
+    }, 240);
+
+    await marcarEnviado(phone, refKey);
+    enviados++;
+  }
+
+  return enviados;
+}
+
 // ── Handler principal ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -370,10 +416,21 @@ export async function GET(req: NextRequest) {
 
     // ── Task checks (+2h após prazo_hora) ────────────────────────────────────
 
-    const checks = await processarTaskChecks(OWNER_PHONE, hoje, agora);
-    if (checks > 0) {
-      totalEnviados += checks;
-      log.push(`task_check: ${checks} enviado(s)`);
+    // ?force=task_check — ignora janela de horário, envia para todas as tarefas de hoje com prazo_hora
+    if (force === 'task_check') {
+      const checks = await processarTaskChecksForced(OWNER_PHONE, hoje);
+      if (checks > 0) {
+        totalEnviados += checks;
+        log.push(`task_check (forced): ${checks} enviado(s)`);
+      } else {
+        log.push('task_check (forced): nenhuma tarefa com prazo_hora hoje');
+      }
+    } else {
+      const checks = await processarTaskChecks(OWNER_PHONE, hoje, agora);
+      if (checks > 0) {
+        totalEnviados += checks;
+        log.push(`task_check: ${checks} enviado(s)`);
+      }
     }
 
     return Response.json({ enviados: totalEnviados, log });
