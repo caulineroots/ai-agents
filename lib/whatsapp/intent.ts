@@ -131,7 +131,8 @@ prazo: ISO date "YYYY-MM-DD" | null. prazo_hora: "HH:MM" (24h) | null — extrai
 Gatilhos: "meta", "objetivo", "quero fazer X por semana/mês". periodo: "semanal"|"mensal". Ex: "minha meta é fazer 5 vendas essa semana" → { descricao: "5 vendas na semana", periodo: "semanal", unidade: "vendas", meta_valor: 5 }
 ### listar_objetivos — dados: {} — Gatilhos: "meus objetivos", "minhas metas"
 ### atualizar_tarefa — dados: { busca_titulo: string, novo_status: "pendente"|"em_andamento"|"concluida"|null, novo_prazo: string|null, novo_prazo_hora: string|null }
-Gatilhos: "marcar como concluída", "tarefa X foi feita", "adiar tarefa X", "tarefa X está em andamento", "muda prazo da tarefa X".
+Gatilhos: "altere", "altera", "alterar", "muda", "mude", "edita", "edite", "atualiza", "atualize", "marcar como concluída", "tarefa X foi feita/concluída", "adiar tarefa X", "tarefa X está em andamento", "muda prazo da tarefa X", "reagenda", "reagende".
+IMPORTANTE: se o usuário usar qualquer palavra de edição/alteração + nome de tarefa existente, use atualizar_tarefa — NÃO crie uma nova.
 busca_titulo: parte do título para encontrar a tarefa. novo_status: novo status (null = não muda). novo_prazo: "YYYY-MM-DD" ou null. novo_prazo_hora: "HH:MM" ou null.
 
 ### atualizar_progresso — dados: { incremento: number, unidade: string | null }
@@ -191,6 +192,9 @@ async function detectarIntent(
 // ─── Executor de intenções ────────────────────────────────────────────────────
 
 async function executarIntent(result: IntentResult, phone: string): Promise<string> {
+  // Injeta phone nos dados para uso interno dos executores (ex: reagendar lembretes)
+  result.dados = { ...result.dados, _phone: phone };
+
   const { intent, dados } = result;
 
   switch (intent) {
@@ -341,6 +345,7 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       const metaAtual = encontrada.metadata as Record<string, unknown>;
       const novaMeta = { ...metaAtual };
       const mudancas: string[] = [];
+      let prazoMudou = false;
 
       if (dados.novo_status) {
         novaMeta.status = dados.novo_status;
@@ -355,17 +360,35 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       if (dados.novo_prazo) {
         novaMeta.prazo = dados.novo_prazo;
         mudancas.push(`prazo → ${dados.novo_prazo}`);
+        prazoMudou = true;
       }
 
       if (dados.novo_prazo_hora) {
         novaMeta.prazo_hora = dados.novo_prazo_hora;
         mudancas.push(`horário → ${dados.novo_prazo_hora}`);
+        prazoMudou = true;
       }
 
       const ok = await atualizar(encontrada.id, { metadata: novaMeta });
       if (!ok) return 'Erro ao atualizar a tarefa. Tenta de novo.';
 
-      return `✓ "${encontrada.title}" atualizada\n${mudancas.join('\n')}`;
+      // Reagenda lembretes se prazo/horário mudou
+      let lembreteInfo = '';
+      if (prazoMudou && novaMeta.prazo) {
+        const phone = dados._phone as string | undefined;
+        if (phone) {
+          await cancelarLembretes(phone, encontrada.id);
+          const n = await agendarLembretes(
+            encontrada.id,
+            phone,
+            novaMeta.prazo as string,
+            novaMeta.prazo_hora as string | undefined,
+          );
+          lembreteInfo = n > 0 ? `\nLembretes: ${n} reagendados` : '';
+        }
+      }
+
+      return `✓ "${encontrada.title}" atualizada\n${mudancas.join('\n')}${lembreteInfo}`;
     }
 
     case 'listar_leads': {
