@@ -160,6 +160,50 @@ async function handleOwnerInterceptors(
 
   // ── Verificar pending actions existentes primeiro ──────────────────────────
 
+  // Estado: aguardando confirmação de tarefa (task_check do briefing diário)
+  const taskCheck = await getPendingAction(numero, 'task_check');
+  if (taskCheck) {
+    const taskId = taskCheck.metadata.task_id as string;
+    const taskTitle = taskCheck.metadata.task_title as string;
+
+    const respostasValidas = ['sim', 'adiado', 'cancelado'];
+    if (respostasValidas.includes(textoNorm)) {
+      const statusMap: Record<string, string> = {
+        sim: 'concluida',
+        adiado: 'pendente',
+        cancelado: 'pendente',
+      };
+      const novoStatus = statusMap[textoNorm];
+
+      const { data: tarefaAtual } = await supabase
+        .from('vault_documents')
+        .select('metadata')
+        .eq('id', taskId)
+        .single();
+
+      if (tarefaAtual) {
+        await supabase
+          .from('vault_documents')
+          .update({
+            metadata: { ...(tarefaAtual.metadata as Record<string, unknown>), status: novoStatus },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', taskId);
+      }
+
+      await cancelarPendingAction(numero, 'task_check');
+
+      const emojiMap: Record<string, string> = {
+        sim: '✅',
+        adiado: '⏸️',
+        cancelado: '❌',
+      };
+      return `${emojiMap[textoNorm]} "${taskTitle}" marcada como ${textoNorm === 'sim' ? 'concluída' : textoNorm}.`;
+    }
+
+    return `Responda SIM (concluída), ADIADO ou CANCELADO para a tarefa "${taskTitle}".`;
+  }
+
   // Estado: aguardando seleção de item para deletar (múltiplos matches)
   const deleteSelection = await getPendingAction(numero, 'delete_selection');
   if (deleteSelection) {

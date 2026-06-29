@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase/client';
 export interface PendingAction {
   id: string;
   phone: string;
-  type: 'delete' | 'delete_selection' | 'prompt_edit';
+  type: 'delete' | 'delete_selection' | 'prompt_edit' | 'task_check';
   metadata: Record<string, unknown>;
   expires_at: string;
   created_at: string;

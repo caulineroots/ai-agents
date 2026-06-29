@@ -1,0 +1,6 @@
+# Dependências para o Competitor Monitor
+# pip install -r requirements-competitor.txt
+instaloader>=4.13
+beautifulsoup4>=4.12
+lxml>=5.0
+supabase>=2.0

@@ -7,18 +7,22 @@ import Anthropic from '@anthropic-ai/sdk';
 import { CLAUDE_MODEL } from '@/lib/config/ai';
 import {
   listar,
+  atualizar,
   criarTarefa,
   criarLead,
   criarProjeto,
   criarFinanceiro,
+  criarObjetivo,
   formatarTarefas,
   formatarLeads,
   formatarProjetos,
   formatarFinanceiro,
+  formatarObjetivos,
   agendarLembretes,
   listarLembretes,
   cancelarLembretes,
   type VaultDocument,
+  type GoalMetadata,
 } from './vault';
 import { criarEventoCalendar } from './calendar';
 import { getPrompt } from './prompts-db';
@@ -34,10 +38,13 @@ type IntentType =
   | 'criar_lead'
   | 'criar_projeto'
   | 'criar_financeiro'
+  | 'criar_objetivo'
   | 'listar_tarefas'
   | 'listar_leads'
   | 'listar_projetos'
   | 'listar_financeiro'
+  | 'listar_objetivos'
+  | 'atualizar_progresso'
   | 'deletar_item'
   | 'listar_lembretes'
   | 'cancelar_lembrete'
@@ -69,14 +76,19 @@ export async function getBrainSystem(): Promise<string> {
 
   const tabelaDatas = `Hoje: ${hoje} (${diaHojeNome})\nPróximos dias:\n${proximosDias}`;
 
+  // Snapshot leve de tarefas pendentes (injetado no contexto sem chamada extra ao Claude)
+  const tarefasPendentes = await listar('task', { status: 'pendente' }, 5);
+  const snapshotTarefas = tarefasPendentes.length > 0
+    ? `\n\n## Suas tarefas pendentes (use apenas se perguntado ou relevante)\n${formatarTarefas(tarefasPendentes)}`
+    : '';
+
   const template = await getPrompt('brain_system');
 
   if (!template) {
-    // Fallback inline caso o DB ainda não tenha sido populado
-    return buildFallbackPrompt(tabelaDatas);
+    return buildFallbackPrompt(tabelaDatas) + snapshotTarefas;
   }
 
-  return template.replace('{{DATA_BRASILIA}}', tabelaDatas);
+  return template.replace('{{DATA_BRASILIA}}', tabelaDatas) + snapshotTarefas;
 }
 
 function buildFallbackPrompt(tabelaDatas: string): string {
@@ -107,14 +119,19 @@ Sempre responda APENAS com JSON válido, sem texto antes ou depois.
   [ { "intent": "...", "dados": { ... }, "resposta": "" }, { "intent": "...", "dados": { ... }, "resposta": "" } ]
   No array, deixe "resposta" vazio — o sistema gera a confirmação automaticamente.
 
-## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
+## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | criar_objetivo | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | listar_objetivos | atualizar_progresso | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
 
 ### criar_tarefa — dados: { titulo, prazo, prazo_hora, urgencia, descricao }
 prazo: ISO date "YYYY-MM-DD" | null. prazo_hora: "HH:MM" (24h) | null — extraia de "às 10h" → "10:00", "às 14h30" → "14:30".
 ### criar_lead — dados: { nome, empresa, telefone, interesse }
 ### criar_projeto — dados: { nome, cliente, status, valor_estimado }
 ### criar_financeiro — dados: { descricao, valor, tipo, projeto }
-### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial" | null, busca_titulo: string }
+### criar_objetivo — dados: { descricao, periodo, unidade, meta_valor, keywords }
+Gatilhos: "meta", "objetivo", "quero fazer X por semana/mês". periodo: "semanal"|"mensal". Ex: "minha meta é fazer 5 vendas essa semana" → { descricao: "5 vendas na semana", periodo: "semanal", unidade: "vendas", meta_valor: 5 }
+### listar_objetivos — dados: {} — Gatilhos: "meus objetivos", "minhas metas"
+### atualizar_progresso — dados: { incremento: number, unidade: string | null }
+Gatilhos: "fiz mais uma venda", "fechei negócio", "consegui X leads". Incrementa progresso_atual do objetivo ativo. Se não souber a unidade, use incremento: 1.
+### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial"|"goal" | null, busca_titulo: string }
 Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM item. Para múltiplos deletes, use resposta_simples pedindo um de cada vez. Se o tipo não for mencionado, deixe tipo = null.
 ### listar_lembretes — dados: {} — Gatilhos: "lembretes", "meus lembretes", "que lembretes tenho"
 ### cancelar_lembrete — dados: { busca_titulo: string | null } — Cancela lembretes de uma tarefa (ou todos se busca_titulo = null). Gatilhos: "cancela lembrete", "remove lembrete", "apaga lembrete"
@@ -307,6 +324,60 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
       return `Financeiro:\n${lista}`;
     }
 
+    case 'criar_objetivo': {
+      const descricao = (dados.descricao as string | null)?.trim() || 'Objetivo sem descrição';
+      const periodo = (dados.periodo as 'semanal' | 'mensal') ?? 'semanal';
+      const unidade = (dados.unidade as string) ?? 'itens';
+      const meta_valor = dados.meta_valor && !isNaN(Number(dados.meta_valor))
+        ? Number(dados.meta_valor)
+        : 1;
+      const keywords = Array.isArray(dados.keywords) ? dados.keywords as string[] : [];
+
+      const doc = await criarObjetivo(descricao, {
+        periodo,
+        unidade,
+        meta_valor,
+        keywords,
+        status: 'ativo',
+      });
+
+      if (!doc) return 'Erro ao salvar o objetivo. Tenta de novo.';
+      return `✓ Objetivo salvo\n${descricao}\nMeta: ${meta_valor} ${unidade} (${periodo})\nProgresso: 0/${meta_valor}`;
+    }
+
+    case 'listar_objetivos': {
+      const docs = await listar('goal', undefined, 10);
+      const lista = formatarObjetivos(docs);
+      return `Objetivos:\n${lista}`;
+    }
+
+    case 'atualizar_progresso': {
+      const incremento = dados.incremento && !isNaN(Number(dados.incremento))
+        ? Number(dados.incremento)
+        : 1;
+
+      // Busca objetivos ativos ordenados por criação (mais recente primeiro)
+      const goals = await listar('goal', undefined, 10);
+      const ativo = goals.find((g) => (g.metadata as GoalMetadata).status === 'ativo');
+
+      if (!ativo) {
+        return 'Nenhum objetivo ativo encontrado. Crie um primeiro: "minha meta é fazer X por semana".';
+      }
+
+      const meta = ativo.metadata as GoalMetadata;
+      const novoProgresso = (meta.progresso_atual ?? 0) + incremento;
+      const ok = await atualizar(ativo.id, {
+        metadata: { ...meta, progresso_atual: novoProgresso },
+      });
+
+      if (!ok) return 'Erro ao atualizar o progresso. Tenta de novo.';
+
+      const pct = meta.meta_valor > 0 ? Math.round((novoProgresso / meta.meta_valor) * 100) : 0;
+      const concluido = novoProgresso >= meta.meta_valor;
+      const emoji = concluido ? '🎉' : pct >= 75 ? '💪' : '📈';
+      return `${emoji} Progresso atualizado\n${ativo.title}\n${novoProgresso}/${meta.meta_valor} ${meta.unidade} (${pct}%)${concluido ? '\nMeta atingida! 🏆' : ''}`;
+    }
+
     case 'deletar_item': {
       const tipo = dados.tipo as string | null;
       const buscaTitulo = dados.busca_titulo as string | null;
@@ -496,12 +567,13 @@ export async function processarComBrain(
   }
 }
 
-export async function listarFormatado(type: 'task' | 'lead' | 'project' | 'financial'): Promise<string> {
+export async function listarFormatado(type: 'task' | 'lead' | 'project' | 'financial' | 'goal'): Promise<string> {
   const docs = await listar(type, undefined, 20);
   switch (type) {
     case 'task': return formatarTarefas(docs);
     case 'lead': return formatarLeads(docs);
     case 'project': return formatarProjetos(docs);
     case 'financial': return formatarFinanceiro(docs);
+    case 'goal': return formatarObjetivos(docs);
   }
 }

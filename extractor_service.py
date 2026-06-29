@@ -86,8 +86,10 @@ app.add_middleware(
 app.include_router(aprender_router)
 
 from extractors.maps_router import router as maps_router
+from extractors.competitor_router import router as competitor_router
 
 app.include_router(maps_router)
+app.include_router(competitor_router)
 
 
 @app.get("/health")

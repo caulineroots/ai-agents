@@ -1,6 +1,6 @@
 /**
  * Vault — armazenamento estruturado de dados do negócio no Supabase.
- * Tipos suportados: lead, client, project, task, financial.
+ * Tipos suportados: lead, client, project, task, financial, goal.
  */
 
 import { supabase } from '@/lib/supabase/client';
@@ -8,7 +8,7 @@ import { getPrompt } from './prompts-db';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-export type VaultType = 'lead' | 'client' | 'project' | 'task' | 'financial';
+export type VaultType = 'lead' | 'client' | 'project' | 'task' | 'financial' | 'goal';
 
 export interface VaultDocument {
   id: string;
@@ -49,6 +49,17 @@ export interface FinanceiroMetadata {
   tipo: 'receita' | 'despesa';
   projeto?: string;
   data?: string;
+}
+
+export interface GoalMetadata {
+  periodo: 'semanal' | 'mensal';
+  unidade: string;          // 'vendas', 'receita', 'leads qualificados', etc.
+  meta_valor: number;       // ex: 5
+  progresso_atual: number;  // atualizado manualmente via bot ou dashboard
+  semana_ref?: string;      // 'YYYY-WNN' para semanais, ex: '2026-W27'
+  mes_ref?: string;         // 'YYYY-MM' para mensais, ex: '2026-07'
+  keywords?: string[];      // palavras-chave para correlação visual com tarefas
+  status: 'ativo' | 'concluido' | 'arquivado';
 }
 
 // ─── CRUD genérico ────────────────────────────────────────────────────────────
@@ -380,4 +391,75 @@ export async function cancelarLembretes(phone: string, taskId?: string): Promise
     return 0;
   }
   return count ?? 0;
+}
+
+// ─── Objetivos (Goals) ────────────────────────────────────────────────────────
+
+/** Calcula a referência de semana ISO: 'YYYY-WNN' */
+function semanaISO(date: Date = new Date()): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+export async function criarObjetivo(
+  descricao: string,
+  meta: Omit<GoalMetadata, 'progresso_atual' | 'semana_ref' | 'mes_ref'> & Partial<Pick<GoalMetadata, 'semana_ref' | 'mes_ref'>>,
+): Promise<VaultDocument | null> {
+  const agora = new Date();
+  const semana_ref = meta.periodo === 'semanal' ? semanaISO(agora) : undefined;
+  const mes_ref = meta.periodo === 'mensal' ? agora.toISOString().slice(0, 7) : undefined;
+
+  return criar('goal', descricao, undefined, {
+    periodo: meta.periodo,
+    unidade: meta.unidade,
+    meta_valor: meta.meta_valor,
+    progresso_atual: 0,
+    semana_ref: meta.semana_ref ?? semana_ref ?? null,
+    mes_ref: meta.mes_ref ?? mes_ref ?? null,
+    keywords: meta.keywords ?? [],
+    status: meta.status ?? 'ativo',
+  });
+}
+
+export function formatarObjetivos(docs: VaultDocument[]): string {
+  if (docs.length === 0) return 'Nenhum objetivo cadastrado.';
+  return docs
+    .map((d) => {
+      const m = d.metadata as GoalMetadata;
+      const pct = m.meta_valor > 0
+        ? Math.round((m.progresso_atual / m.meta_valor) * 100)
+        : 0;
+      const barra = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+      const periodoStr = m.periodo === 'semanal'
+        ? `semana ${m.semana_ref ?? ''}`
+        : `mês ${m.mes_ref ?? ''}`;
+      return `• ${d.title}\n  ${barra} ${m.progresso_atual}/${m.meta_valor} ${m.unidade} (${pct}%) — ${periodoStr}`;
+    })
+    .join('\n\n');
+}
+
+/**
+ * Busca o objetivo semanal ativo no período atual.
+ */
+export async function buscarObjetivoAtivo(): Promise<VaultDocument | null> {
+  const semana = semanaISO();
+  const { data, error } = await supabase
+    .from('vault_documents')
+    .select('*')
+    .eq('type', 'goal')
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data) return null;
+
+  const ativo = (data as VaultDocument[]).find((d) => {
+    const m = d.metadata as GoalMetadata;
+    return m.status === 'ativo' && (m.semana_ref === semana || m.periodo === 'mensal');
+  });
+
+  return ativo ?? null;
 }

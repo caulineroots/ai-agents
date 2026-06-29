@@ -141,11 +141,29 @@ export async function GET(req: NextRequest) {
     const enviados = resultados.filter((r) => r.ok).length;
     const falhas = resultados.filter((r) => !r.ok).length;
 
+    // ── Também dispara o cron de briefings diários (mesmo job, mesma autenticação) ──
+    let diario: Record<string, unknown> = {};
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+        ?? process.env.VERCEL_URL
+        ?? 'http://localhost:3000';
+      const protocol = baseUrl.startsWith('localhost') ? 'http' : 'https';
+      const url = baseUrl.startsWith('http') ? baseUrl : `${protocol}://${baseUrl}`;
+
+      const res = await fetch(`${url}/api/cron/diario`, {
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      });
+      if (res.ok) diario = await res.json();
+    } catch (err) {
+      console.error('[cron/lembretes] erro ao chamar /api/cron/diario:', err);
+    }
+
     return Response.json({
       enviados,
       falhas,
       total: resultados.length,
       ids: resultados.map((r) => r.id),
+      diario,
     });
   } catch (err) {
     console.error('[cron/lembretes] erro inesperado:', err);
