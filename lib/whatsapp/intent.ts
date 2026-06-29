@@ -44,6 +44,7 @@ type IntentType =
   | 'listar_projetos'
   | 'listar_financeiro'
   | 'listar_objetivos'
+  | 'atualizar_tarefa'
   | 'atualizar_progresso'
   | 'deletar_item'
   | 'listar_lembretes'
@@ -119,7 +120,7 @@ Sempre responda APENAS com JSON válido, sem texto antes ou depois.
   [ { "intent": "...", "dados": { ... }, "resposta": "" }, { "intent": "...", "dados": { ... }, "resposta": "" } ]
   No array, deixe "resposta" vazio — o sistema gera a confirmação automaticamente.
 
-## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | criar_objetivo | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | listar_objetivos | atualizar_progresso | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
+## Tipos: criar_tarefa | criar_lead | criar_projeto | criar_financeiro | criar_objetivo | listar_tarefas | listar_leads | listar_projetos | listar_financeiro | listar_objetivos | atualizar_tarefa | atualizar_progresso | deletar_item | listar_lembretes | cancelar_lembrete | resposta_simples
 
 ### criar_tarefa — dados: { titulo, prazo, prazo_hora, urgencia, descricao }
 prazo: ISO date "YYYY-MM-DD" | null. prazo_hora: "HH:MM" (24h) | null — extraia de "às 10h" → "10:00", "às 14h30" → "14:30".
@@ -129,6 +130,10 @@ prazo: ISO date "YYYY-MM-DD" | null. prazo_hora: "HH:MM" (24h) | null — extrai
 ### criar_objetivo — dados: { descricao, periodo, unidade, meta_valor, keywords }
 Gatilhos: "meta", "objetivo", "quero fazer X por semana/mês". periodo: "semanal"|"mensal". Ex: "minha meta é fazer 5 vendas essa semana" → { descricao: "5 vendas na semana", periodo: "semanal", unidade: "vendas", meta_valor: 5 }
 ### listar_objetivos — dados: {} — Gatilhos: "meus objetivos", "minhas metas"
+### atualizar_tarefa — dados: { busca_titulo: string, novo_status: "pendente"|"em_andamento"|"concluida"|null, novo_prazo: string|null, novo_prazo_hora: string|null }
+Gatilhos: "marcar como concluída", "tarefa X foi feita", "adiar tarefa X", "tarefa X está em andamento", "muda prazo da tarefa X".
+busca_titulo: parte do título para encontrar a tarefa. novo_status: novo status (null = não muda). novo_prazo: "YYYY-MM-DD" ou null. novo_prazo_hora: "HH:MM" ou null.
+
 ### atualizar_progresso — dados: { incremento: number, unidade: string | null }
 Gatilhos: "fiz mais uma venda", "fechei negócio", "consegui X leads". Incrementa progresso_atual do objetivo ativo. Se não souber a unidade, use incremento: 1.
 ### deletar_item — dados: { tipo: "task"|"lead"|"project"|"financial"|"goal" | null, busca_titulo: string }
@@ -296,12 +301,71 @@ async function executarIntent(result: IntentResult, phone: string): Promise<stri
     }
 
     case 'listar_tarefas': {
-      const filtros: Record<string, unknown> = {};
-      if (dados.status) filtros.status = dados.status;
-      if (dados.urgencia) filtros.urgencia = dados.urgencia;
-      const docs = await listar('task', Object.keys(filtros).length ? filtros : undefined, 15);
-      const lista = formatarTarefas(docs);
-      return `Tarefas:\n${lista}`;
+      const querConcluidas = dados.status === 'concluida' ||
+        /conclu[ií]d/i.test((dados.busca ?? '') as string);
+
+      const todas = await listar('task', undefined, 30);
+
+      let exibir: VaultDocument[];
+      let sufixo = '';
+
+      if (querConcluidas) {
+        exibir = todas.filter(d => (d.metadata as { status?: string }).status === 'concluida');
+      } else {
+        // Por padrão: só pendentes e em andamento
+        exibir = todas.filter(d => {
+          const s = (d.metadata as { status?: string }).status;
+          return s !== 'concluida';
+        });
+        const nConcluidas = todas.length - exibir.length;
+        if (nConcluidas > 0) {
+          sufixo = `\n\n✅ ${nConcluidas} concluída(s) oculta(s). Diga "tarefas concluídas" para ver.`;
+        }
+      }
+
+      if (exibir.length === 0) return querConcluidas ? 'Nenhuma tarefa concluída.' : 'Nenhuma tarefa pendente.';
+      return `Tarefas:\n${formatarTarefas(exibir)}${sufixo}`;
+    }
+
+    case 'atualizar_tarefa': {
+      const buscaTitulo = ((dados.busca_titulo as string | null) ?? '').toLowerCase().trim();
+      if (!buscaTitulo) return 'Me diga qual tarefa quer atualizar.';
+
+      const todas = await listar('task', undefined, 30);
+      const encontrada = todas.find(d => d.title.toLowerCase().includes(buscaTitulo));
+
+      if (!encontrada) {
+        return `Não encontrei nenhuma tarefa com "${dados.busca_titulo}". Verifica o nome e tenta de novo.`;
+      }
+
+      const metaAtual = encontrada.metadata as Record<string, unknown>;
+      const novaMeta = { ...metaAtual };
+      const mudancas: string[] = [];
+
+      if (dados.novo_status) {
+        novaMeta.status = dados.novo_status;
+        const labelStatus: Record<string, string> = {
+          concluida: 'concluída ✅',
+          em_andamento: 'em andamento 🔄',
+          pendente: 'pendente ⏳',
+        };
+        mudancas.push(`status → ${labelStatus[dados.novo_status as string] ?? dados.novo_status}`);
+      }
+
+      if (dados.novo_prazo) {
+        novaMeta.prazo = dados.novo_prazo;
+        mudancas.push(`prazo → ${dados.novo_prazo}`);
+      }
+
+      if (dados.novo_prazo_hora) {
+        novaMeta.prazo_hora = dados.novo_prazo_hora;
+        mudancas.push(`horário → ${dados.novo_prazo_hora}`);
+      }
+
+      const ok = await atualizar(encontrada.id, { metadata: novaMeta });
+      if (!ok) return 'Erro ao atualizar a tarefa. Tenta de novo.';
+
+      return `✓ "${encontrada.title}" atualizada\n${mudancas.join('\n')}`;
     }
 
     case 'listar_leads': {
