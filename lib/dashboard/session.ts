@@ -37,34 +37,51 @@ export async function createSession(phone: string): Promise<string> {
  * Aceita cookie legado (senha plain-text) retornando OWNER_PHONE.
  */
 export async function getSessionPhone(cookieValue: string | undefined): Promise<string | null> {
-  if (!cookieValue) return null;
+  if (!cookieValue) {
+    console.log('[session] cookieValue vazio');
+    return null;
+  }
 
   // Backward compat: cookie legado e apenas a senha
   const password = process.env.DASHBOARD_PASSWORD ?? 'cauline2026';
   if (cookieValue === password) {
+    console.log('[session] cookie legado (senha) reconhecido');
     return process.env.OWNER_PHONE ?? 'owner';
   }
 
   const dotIdx = cookieValue.lastIndexOf('.');
-  if (dotIdx === -1) return null;
+  if (dotIdx === -1) {
+    console.log('[session] cookie sem ponto separador — formato invalido');
+    return null;
+  }
 
   try {
     const encodedPayload = cookieValue.slice(0, dotIdx);
     const sig = cookieValue.slice(dotIdx + 1);
     const payload = atob(encodedPayload);
+    console.log('[session] payload decodificado:', payload.slice(0, 30));
 
     const expected = await hmacSign(payload, getSecret());
-    if (expected !== sig) return null;
+    const match = expected === sig;
+    console.log('[session] HMAC match:', match, '| secret usado (primeiros 6):', getSecret().slice(0, 6));
+
+    if (!match) {
+      console.log('[session] HMAC invalido — assinatura nao confere');
+      return null;
+    }
 
     const colonIdx = payload.lastIndexOf(':');
     if (colonIdx === -1) return null;
 
     const phone = payload.slice(0, colonIdx);
     const exp = parseInt(payload.slice(colonIdx + 1), 10);
-    if (isNaN(exp) || Date.now() > exp) return null;
+    const expired = isNaN(exp) || Date.now() > exp;
+    console.log('[session] phone:', phone, '| expirado:', expired);
 
+    if (expired) return null;
     return phone;
-  } catch {
+  } catch (e) {
+    console.log('[session] excecao ao validar cookie:', e);
     return null;
   }
 }
