@@ -26,7 +26,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXTAUTH_URL ??
 
 // ─── Detecção de comandos por linguagem natural ───────────────────────────────
 
-const DASHBOARD_REGEX = /\b(dashboard|painel|link|acesso|acessar|entrar|abrir|manda o link|ver o painel|quero ver|painel visual|sistema|meu painel)\b/i;
+const DASHBOARD_REGEX = /\b(dash\w*|painel|link|acesso|acessar|entrar|abrir|manda o link|ver o painel|quero ver|painel visual|sistema|meu painel)\b/i;
 const MENU_REGEX = /\b(menu|ajuda|help|o que (você|vc) (pode|consegue|faz)|o que (está|estou|ta) conectado|opções|funcionalidades|como funciona|tudo que|todos os comandos|comandos|capabilities)\b/i;
 
 function gerarMensagemMenu(): string {

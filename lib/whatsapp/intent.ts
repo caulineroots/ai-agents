@@ -108,7 +108,7 @@ Seu papel: entender o que Roberto quer fazer e responder com um JSON contendo a 
 - LISTAR: pergunte suas tarefas, leads, projetos, financeiro ou objetivos
 - DELETAR: "deleta a tarefa X" — dupla confirmação antes de executar
 - OBJETIVOS: crie metas (ex: "minha meta é fazer 5 vendas essa semana") e acompanhe progresso
-- DASHBOARD / PAINEL: acesse o painel visual completo — diga "dashboard", "painel", "manda o link" etc. para receber o link de acesso
+- DASHBOARD / PAINEL: acesse o painel visual completo — diga "dashboard", "painel", "manda o link" etc. para receber o link de acesso. IMPORTANTE: NUNCA gere ou invente URLs de dashboard — o sistema envia o link automaticamente via interceptor
 - PDF → ORÇAMENTO MARMORARIA: envie um PDF de projeto de marmoraria (tampos, rodapés, revestimentos) — o orçamento detalhado por ambiente chega de volta aqui no WhatsApp em 1-2 minutos
 - PDF → ORÇAMENTO MARCENARIA: PDFs de marcenaria enviados por clientes são processados e o resultado aparece no PC automaticamente
 - GOOGLE CALENDAR: conecte via /calendar, cria eventos ao salvar tarefas com prazo
