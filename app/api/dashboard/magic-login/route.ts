@@ -33,35 +33,34 @@ export async function GET(request: NextRequest) {
   await supabase.from('dashboard_tokens').update({ used: true }).eq('token', token);
 
   const sessionValue = await createSession(data.phone as string);
-  console.log('[magic-login] session criada, length:', sessionValue.length);
-
-  // Railway stripa Set-Cookie em respostas 302.
-  // Retornamos 200 com Set-Cookie header (proxy nao strip em 200).
-  // O JS na pagina faz o redirect depois que o browser ja armazenou o cookie.
+  const maxAge = 7 * 24 * 60 * 60;
   const dashboardUrl = `${BASE}/dashboard`;
+
+  console.log('[magic-login] session criada, length:', sessionValue.length);
+  console.log('[magic-login] retornando HTML que seta cookie via JS e redireciona para:', dashboardUrl);
+
+  // Railway stripa Set-Cookie mesmo em respostas 200.
+  // O JS seta o cookie diretamente no browser (sem HttpOnly, seguro pois HMAC valida).
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Autenticando...</title></head>
 <body>
 <p>Autenticando, aguarde...</p>
-<script>window.location.replace(${JSON.stringify(dashboardUrl)});</script>
+<script>
+(function() {
+  var val = ${JSON.stringify(sessionValue)};
+  var maxAge = ${maxAge};
+  var url = ${JSON.stringify(dashboardUrl)};
+  document.cookie = "dash_session=" + val + "; Path=/; Secure; SameSite=Lax; Max-Age=" + maxAge;
+  console.log("cookie set, redirecionando...");
+  window.location.replace(url);
+})();
+</script>
 </body>
 </html>`;
 
-  console.log('[magic-login] retornando 200 com Set-Cookie + JS redirect para:', dashboardUrl);
-
-  const response = new NextResponse(html, {
+  return new NextResponse(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
-
-  response.cookies.set('dash_session', sessionValue, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60,
-    path: '/',
-  });
-
-  return response;
 }
