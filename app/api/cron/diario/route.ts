@@ -93,6 +93,7 @@ async function buscarTarefas(filtro?: Record<string, unknown>, limit = 10): Prom
     .from('vault_documents')
     .select('id, title, metadata, created_at')
     .eq('type', 'task')
+    .eq('phone', OWNER_PHONE)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -113,6 +114,7 @@ async function buscarObjetivoAtivo(): Promise<VaultDoc | null> {
     .from('vault_documents')
     .select('id, title, metadata, created_at')
     .eq('type', 'goal')
+    .eq('phone', OWNER_PHONE)
     .order('created_at', { ascending: false })
     .limit(10);
 

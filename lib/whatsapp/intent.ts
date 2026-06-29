@@ -59,7 +59,7 @@ interface IntentResult {
 
 // ─── System prompt do Brain (gerado em runtime para datas corretas) ───────────
 
-export async function getBrainSystem(): Promise<string> {
+export async function getBrainSystem(phone?: string): Promise<string> {
   const DIAS_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
   const DIAS_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 
@@ -77,12 +77,10 @@ export async function getBrainSystem(): Promise<string> {
 
   const tabelaDatas = `Hoje: ${hoje} (${diaHojeNome})\nPróximos dias:\n${proximosDias}`;
 
-  // Snapshot leve de tarefas pendentes (injetado no contexto sem chamada extra ao Claude)
-  // Usa phone vazio para getBrainSystem — o snapshot é apenas visual, sem isolamento crítico aqui
-  // O isolamento real acontece nos executores que recebem o phone correto
-  const OWNER_PHONE = process.env.OWNER_PHONE ?? '';
-  const tarefasPendentes = OWNER_PHONE
-    ? await listar(OWNER_PHONE, 'task', { status: 'pendente' }, 5)
+  // Snapshot leve de tarefas pendentes do usuário atual
+  const snapshotPhone = phone ?? process.env.OWNER_PHONE ?? '';
+  const tarefasPendentes = snapshotPhone
+    ? await listar(snapshotPhone, 'task', { status: 'pendente' }, 5)
     : [];
   const snapshotTarefas = tarefasPendentes.length > 0
     ? `\n\n## Suas tarefas pendentes (use apenas se perguntado ou relevante)\n${formatarTarefas(tarefasPendentes)}`
@@ -167,8 +165,9 @@ Gatilhos: "deleta", "remova", "remove", "apaga", "exclui". Processe APENAS UM it
 async function detectarIntent(
   historico: Anthropic.MessageParam[],
   mensagem: string,
+  phone: string,
 ): Promise<IntentResult | IntentResult[] | null> {
-  const systemPrompt = await getBrainSystem();
+  const systemPrompt = await getBrainSystem(phone);
 
   const messages: Anthropic.MessageParam[] = [
     ...historico.slice(-6),
@@ -657,7 +656,7 @@ export async function processarComBrain(
   phone: string,
 ): Promise<string> {
   try {
-    const result = await detectarIntent(historico, mensagem);
+    const result = await detectarIntent(historico, mensagem, phone);
     if (!result) {
       return 'Não entendi bem. Pode reformular?';
     }
