@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { getSessionPhone } from '@/lib/dashboard/session';
 
-function getPhone(request: NextRequest): string | null {
+async function getPhone(request: NextRequest): Promise<string | null> {
   const fromHeader = request.headers.get('x-session-phone');
   if (fromHeader) return fromHeader;
   return getSessionPhone(request.cookies.get('dash_session')?.value);
@@ -13,7 +13,7 @@ function unauthorized() {
 }
 
 export async function GET(request: NextRequest) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { data, error } = await supabase
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { searchParams } = request.nextUrl;

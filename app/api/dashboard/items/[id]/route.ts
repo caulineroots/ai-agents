@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { getSessionPhone } from '@/lib/dashboard/session';
 
-function getPhone(request: NextRequest): string | null {
+async function getPhone(request: NextRequest): Promise<string | null> {
   const fromHeader = request.headers.get('x-session-phone');
   if (fromHeader) return fromHeader;
   return getSessionPhone(request.cookies.get('dash_session')?.value);
@@ -16,7 +16,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { id } = await params;
@@ -39,7 +39,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { id } = await params;
@@ -70,7 +70,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { id } = await params;

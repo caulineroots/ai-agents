@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { getSessionPhone } from '@/lib/dashboard/session';
 
-function getPhone(request: NextRequest): string | null {
-  // Middleware injeta o phone como header interno
+async function getPhone(request: NextRequest): Promise<string | null> {
   const fromHeader = request.headers.get('x-session-phone');
   if (fromHeader) return fromHeader;
-  // Fallback direto pelo cookie (para chamadas sem middleware, ex: fetch server-side)
   return getSessionPhone(request.cookies.get('dash_session')?.value);
 }
 
@@ -15,7 +13,7 @@ function unauthorized() {
 }
 
 export async function GET(request: NextRequest) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const { searchParams } = request.nextUrl;
@@ -41,7 +39,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const phone = getPhone(request);
+  const phone = await getPhone(request);
   if (!phone) return unauthorized();
 
   const body = await request.json();

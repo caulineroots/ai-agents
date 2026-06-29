@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   await supabase.from('dashboard_tokens').update({ used: true }).eq('token', token);
 
-  const sessionValue = createSession(data.phone as string);
+  const sessionValue = await createSession(data.phone as string);
 
   const response = NextResponse.redirect(new URL('/dashboard', BASE));
   response.cookies.set('dash_session', sessionValue, {

@@ -3,17 +3,17 @@ import { getSessionPhone } from '@/lib/dashboard/session';
 
 const SESSION_COOKIE = 'dash_session';
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const cookieValue = request.cookies.get(SESSION_COOKIE)?.value;
-  const phone = getSessionPhone(cookieValue);
+  const phone = await getSessionPhone(cookieValue);
 
   if (!phone) {
-    const loginUrl = new URL('/login', request.url);
+    const base = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://ai.caulineroots.com';
+    const loginUrl = new URL('/login', base);
     loginUrl.searchParams.set('from', request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Passa o phone como header interno para as rotas de API e páginas
   const response = NextResponse.next();
   response.headers.set('x-session-phone', phone);
   return response;
