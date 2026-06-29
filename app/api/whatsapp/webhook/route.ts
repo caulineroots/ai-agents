@@ -236,6 +236,22 @@ async function handleOwnerInterceptors(
       return 'Cancelado.';
     }
 
+    // "os dois", "ambos", "todos", "1 e 2", "deletar tudo" → deleta todos
+    const querTodos = /\b(os dois|ambos|todos|tudo|all)\b/.test(textoNorm) ||
+      /\b1\s*(e|,)\s*2\b/.test(textoNorm);
+
+    if (querTodos) {
+      await cancelarPendingAction(numero, 'delete_selection');
+      const deletados: string[] = [];
+      for (const item of items) {
+        const { error } = await supabase.from('vault_documents').delete().eq('id', item.id);
+        if (!error) deletados.push(`"${item.title}"`);
+      }
+      return deletados.length > 0
+        ? `✓ Deletados: ${deletados.join(', ')}.`
+        : 'Erro ao deletar os itens.';
+    }
+
     if (!isNaN(num) && num >= 1 && num <= items.length) {
       const item = items[num - 1];
       await cancelarPendingAction(numero, 'delete_selection');
@@ -247,7 +263,7 @@ async function handleOwnerInterceptors(
       return `Confirmar exclusão de "${item.title}"?\nResponda CONFIRMAR ou CANCELAR.`;
     }
 
-    return `Responda com um número de 1 a ${items.length} ou CANCELAR.`;
+    return `Responda com um número de 1 a ${items.length}, "os dois" para deletar todos, ou CANCELAR.`;
   }
 
   // Estado: aguardando novo conteúdo de prompt para editar
