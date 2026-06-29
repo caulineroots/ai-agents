@@ -95,7 +95,7 @@ export default function OverviewPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-zinc-100">Visão Geral</h1>
+        <h1 className="text-xl font-bold text-zinc-100">🚀 Visão Geral</h1>
         <p className="text-sm text-zinc-500 mt-0.5">
           {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
