@@ -2,6 +2,7 @@ import { processarMensagem, carregarHistorico, salvarMensagem } from '@/lib/what
 import { processarPdfMarcenaria } from '@/lib/whatsapp/marcenaria-job';
 import { processarPdfMarmoraria } from '@/lib/whatsapp/marmoraria-job';
 import { processarComBrain } from '@/lib/whatsapp/intent';
+import { executarCursorAgent } from '@/lib/whatsapp/cursor-agent';
 import { getAuthUrl, calendarConectado } from '@/lib/whatsapp/calendar';
 import { supabase } from '@/lib/supabase/client';
 import { getPrompt, setPrompt, listPrompts } from '@/lib/whatsapp/prompts-db';
@@ -500,6 +501,20 @@ export async function POST(request: Request) {
             await enviarResposta(numero, 'Google Calendar não configurado. Adicione GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local.');
           }
         }
+        return Response.json({ ok: true });
+      }
+
+      // ── Cursor SDK: edição de código via WhatsApp ──────────────────────────
+      const textoTrimmed = texto.trim();
+      const cursorMatch =
+        textoTrimmed.match(/^cursor:\s*(.+)/is) ??
+        textoTrimmed.match(/^\/cursor\s+(.+)/is);
+      if (cursorMatch) {
+        const instrucao = cursorMatch[1].trim();
+        await enviarResposta(numero, '🤖 Entendido! Acionando o Cursor Agent...');
+        executarCursorAgent(instrucao, (msg) => enviarResposta(numero, msg)).catch((err) => {
+          console.error('[webhook] cursor-agent background error:', err);
+        });
         return Response.json({ ok: true });
       }
 
