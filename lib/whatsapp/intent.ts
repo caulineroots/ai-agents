@@ -85,7 +85,10 @@ export async function getBrainSystem(): Promise<string> {
 
   const template = await getPrompt('brain_system');
 
-  if (!template) {
+  // Se o prompt do DB não contiver os intents novos, usa o fallback atualizado
+  const promptDesatualizado = !template || !template.includes('atualizar_tarefa');
+
+  if (promptDesatualizado) {
     return buildFallbackPrompt(tabelaDatas) + snapshotTarefas;
   }
 
