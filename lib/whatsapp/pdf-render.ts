@@ -39,6 +39,26 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
       const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
       const context = canvas.getContext('2d');
       console.log('[pdf-render] canvas criado. canvas type:', typeof canvas, 'context type:', typeof context);
+
+      // pdfjs v5 pode chamar ctx.drawImage() com objetos incompativeis com node-canvas
+      // (ex: Image nao carregada, ImageBitmap nativo, etc.).
+      // Para orçamentos, o que importa e o texto (medidas, materiais, preços) — imagens
+      // decorativas podem ser puladas sem perda de informação relevante.
+      const origDrawImage = context.drawImage.bind(context);
+      // @ts-expect-error — sobrescrevemos drawImage para interceptar erros de tipo
+      context.drawImage = (...args: unknown[]) => {
+        try {
+          // @ts-expect-error — args dinâmicos
+          return origDrawImage(...args);
+        } catch (err) {
+          if (err instanceof TypeError && String(err.message).includes('Image or Canvas expected')) {
+            // Imagem incompativel — pula silenciosamente
+            return;
+          }
+          throw err;
+        }
+      };
+
       return { canvas, context };
     },
     reset(cc: { canvas: ReturnType<typeof createCanvas>; context: unknown }, width: number, height: number) {
@@ -94,8 +114,9 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
       }).promise;
       console.log(`[pdf-render] página ${pageNum} renderizada com sucesso`);
     } catch (err) {
-      console.error(`[pdf-render] ERRO ao renderizar página ${pageNum}:`, err);
-      throw err;
+      // Erros de imagem incompativel sao tratados no drawImage interceptado.
+      // Outros erros inesperados: loga mas continua para nao abortar o lote inteiro.
+      console.warn(`[pdf-render] aviso ao renderizar página ${pageNum}:`, err);
     }
 
     const buf = (cc.canvas as ReturnType<typeof createCanvas>).toBuffer('image/jpeg', { quality: 0.85 });
