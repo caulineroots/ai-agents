@@ -51,7 +51,7 @@ Alguns exemplos:
 }
 
 function gerarLinkDashboard(): string {
-  return `📊 *Acesso ao Dashboard*\n\nLink: ${BASE_URL}/login\n\nFaça login com seu número (com DDI, ex: 5511999...) e a senha fornecida. Se não tiver senha, me peça aqui.`;
+  return `📊 *Acesso ao Dashboard*\n\nLink: ${BASE_URL}/login\n\n👤 Usuário: seu número com DDI (ex: 5511914991065)\n🔑 Senha: 1234`;
 }
 
 export const runtime = 'nodejs';

@@ -12,10 +12,18 @@ import { createSession } from '@/lib/dashboard/session';
 function getCredentials(): Map<string, string> {
   const map = new Map<string, string>();
 
+  const defaultPass = process.env.DASHBOARD_PASSWORD ?? '1234';
+
   // Owner direto
   const ownerPhone = process.env.OWNER_PHONE;
-  const ownerPass = process.env.DASHBOARD_PASSWORD ?? 'cauline2026';
-  if (ownerPhone) map.set(ownerPhone, ownerPass);
+  if (ownerPhone) map.set(ownerPhone, defaultPass);
+
+  // Allowed phones com senha padrao
+  const allowedRaw = process.env.ALLOWED_PHONES ?? '';
+  for (const p of allowedRaw.split(',')) {
+    const phone = p.trim();
+    if (phone && !map.has(phone)) map.set(phone, defaultPass);
+  }
 
   // Usuarios adicionais: DASHBOARD_USERS=phone:senha,phone2:senha2
   const raw = process.env.DASHBOARD_USERS ?? '';
