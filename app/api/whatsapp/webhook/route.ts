@@ -50,14 +50,8 @@ Alguns exemplos:
 • "painel" → link de acesso ao dashboard`;
 }
 
-async function gerarMagicLink(phone: string): Promise<string> {
-  const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-  await supabase.from('dashboard_tokens').insert({ token, phone, expires_at: expiresAt });
-
-  const link = `${BASE_URL}/api/dashboard/magic-login?token=${token}`;
-  return `🔗 Seu link de acesso ao painel:\n${link}\n\n⏱ Válido por 15 minutos, uso único.`;
+function gerarLinkDashboard(): string {
+  return `📊 *Acesso ao Dashboard*\n\nLink: ${BASE_URL}/login\n\nFaça login com seu número (com DDI, ex: 5511999...) e a senha fornecida. Se não tiver senha, me peça aqui.`;
 }
 
 export const runtime = 'nodejs';
@@ -555,10 +549,9 @@ export async function POST(request: Request) {
         return Response.json({ ok: true });
       }
 
-      // ── Magic link do dashboard ────────────────────────────────────────────
+      // ── Link do dashboard ──────────────────────────────────────────────────
       if (DASHBOARD_REGEX.test(texto)) {
-        const linkMsg = await gerarMagicLink(numero);
-        await enviarResposta(numero, linkMsg);
+        await enviarResposta(numero, gerarLinkDashboard());
         return Response.json({ ok: true });
       }
 
@@ -604,8 +597,7 @@ export async function POST(request: Request) {
       }
 
       if (DASHBOARD_REGEX.test(texto)) {
-        const linkMsg = await gerarMagicLink(numero);
-        await enviarResposta(numero, linkMsg);
+        await enviarResposta(numero, gerarLinkDashboard());
         return Response.json({ ok: true });
       }
 

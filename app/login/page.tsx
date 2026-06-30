@@ -1,49 +1,100 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useState, FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
-const errosMensagens: Record<string, string> = {
-  token_invalido: 'Link inválido ou não encontrado.',
-  token_usado: 'Este link já foi utilizado. Solicite um novo pelo WhatsApp.',
-  token_expirado: 'Este link expirou (válido por 15 minutos). Solicite um novo pelo WhatsApp.',
-};
+function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = searchParams.get('from') ?? '/dashboard';
 
-function LoginContent() {
-  const params = useSearchParams();
-  const erro = params.get('erro');
-  const mensagemErro = erro ? (errosMensagens[erro] ?? 'Erro ao acessar o painel.') : null;
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/dashboard/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim(), password }),
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        router.replace(from);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? 'Usuário ou senha inválidos.');
+      }
+    } catch {
+      setError('Erro de conexão. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-stone-950 flex items-center justify-center px-4">
-      <div className="max-w-md w-full text-center space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-stone-100">Acesso ao Painel</h1>
-          <p className="text-stone-400 text-sm">
-            O acesso é feito via link enviado pelo WhatsApp.
-          </p>
+    <div className="min-h-screen flex items-center justify-center bg-stone-950">
+      <div className="w-full max-w-sm mx-4">
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-1">Dashboard</h1>
+          <p className="text-stone-400 text-sm">Cauline Roots</p>
         </div>
 
-        <div className="bg-stone-900 border border-stone-800 rounded-xl p-6 space-y-4">
-          <div className="text-4xl">📱</div>
-          <p className="text-stone-300 text-sm leading-relaxed">
-            Envie uma mensagem para o assistente no WhatsApp dizendo{' '}
-            <span className="font-mono bg-stone-800 px-2 py-0.5 rounded text-stone-100 text-xs">
-              painel
-            </span>{' '}
-            ou{' '}
-            <span className="font-mono bg-stone-800 px-2 py-0.5 rounded text-stone-100 text-xs">
-              dashboard
-            </span>{' '}
-            e você receberá um link de acesso exclusivo válido por 15 minutos.
-          </p>
-        </div>
-
-        {mensagemErro && (
-          <div className="bg-red-950/50 border border-red-900 rounded-lg p-4">
-            <p className="text-red-400 text-sm">{mensagemErro}</p>
+        <form onSubmit={handleSubmit} className="bg-stone-900 border border-stone-800 rounded-xl p-6 space-y-4">
+          <div>
+            <label className="block text-stone-300 text-sm font-medium mb-1.5">
+              Número (com DDI)
+            </label>
+            <input
+              type="text"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="5511914991065"
+              required
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2.5 text-white placeholder-stone-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
           </div>
-        )}
+
+          <div>
+            <label className="block text-stone-300 text-sm font-medium mb-1.5">
+              Senha
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full bg-stone-800 border border-stone-700 rounded-lg px-3 py-2.5 text-white placeholder-stone-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
+          </div>
+
+          {error && (
+            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg py-2.5 text-sm transition-colors"
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+
+        <p className="text-center text-stone-600 text-xs mt-6">
+          Não tem acesso? Fale pelo WhatsApp.
+        </p>
       </div>
     </div>
   );
@@ -52,7 +103,7 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense>
-      <LoginContent />
+      <LoginForm />
     </Suspense>
   );
 }
