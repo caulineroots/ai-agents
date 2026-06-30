@@ -10,12 +10,17 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
   const { createCanvas, Image: CanvasImage } = canvasModule;
   console.log('[pdf-render] node-canvas importado. createCanvas type:', typeof createCanvas);
 
-  // pdfjs usa new Image() internamente para renderizar inline images — não existe no Node.js.
-  // Expõe o Image do node-canvas globalmente antes de qualquer chamada ao pdfjs.
-  if (typeof global.Image === 'undefined') {
-    (global as Record<string, unknown>).Image = CanvasImage;
-    console.log('[pdf-render] global.Image patcheado com node-canvas Image');
+  // pdfjs v5 no Node.js 18+ usa createImageBitmap nativo para inline images.
+  // O resultado (ImageBitmap nativo) é incompativel com node-canvas drawImage.
+  // Deletamos createImageBitmap do global para forcar o pdfjs a usar o fallback via Image.
+  if (typeof (global as Record<string, unknown>).createImageBitmap !== 'undefined') {
+    delete (global as Record<string, unknown>).createImageBitmap;
+    console.log('[pdf-render] global.createImageBitmap removido para compatibilidade com node-canvas');
   }
+
+  // Expõe o Image do node-canvas globalmente para o pdfjs usar no fallback.
+  (global as Record<string, unknown>).Image = CanvasImage;
+  console.log('[pdf-render] global.Image patcheado com node-canvas Image');
 
   const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const { getDocument, GlobalWorkerOptions } = pdfjsModule;
@@ -60,6 +65,7 @@ export async function renderPdfToJpegs(pdfBuffer: Buffer): Promise<Buffer[]> {
     pdfDoc = await getDocument({
       data,
       useSystemFonts: true,
+      isOffscreenCanvasSupported: false,
       // @ts-expect-error — pdfjs aceita canvasFactory customizado mas types não expõem
       canvasFactory: nodeCanvasFactory,
     }).promise;
