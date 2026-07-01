@@ -69,9 +69,16 @@ const s3 = new S3Client({
   },
 });
 
-async function enviarResposta(numero: string, texto: string) {
+async function enviarResposta(
+  numero: string,
+  texto: string,
+  instance: string = EVOLUTION_INSTANCE,
+): Promise<boolean> {
   try {
-    const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+    const url = `${EVOLUTION_API_URL}/message/sendText/${instance}`;
+    console.log('[webhook] enviando | instance:', instance, '| numero:', numero, '| chars:', texto.length);
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,21 +86,31 @@ async function enviarResposta(numero: string, texto: string) {
       },
       body: JSON.stringify({ number: numero, text: texto }),
     });
+
+    const responseText = await res.text();
+    console.log('[webhook] evolution resposta:', res.status, responseText.slice(0, 400));
+
     if (!res.ok) {
-      const txt = await res.text();
-      console.error('[webhook] enviarResposta falhou:', res.status, txt.slice(0, 300));
-    } else {
-      console.log('[webhook] resposta enviada para', numero, '| chars:', texto.length);
+      console.error('[webhook] enviarResposta FALHOU | instance:', instance, '| status:', res.status);
+      return false;
     }
+
+    console.log('[webhook] resposta enviada OK para', numero);
+    return true;
   } catch (err) {
     console.error('[webhook] erro ao enviar resposta:', err);
+    return false;
   }
 }
 
-async function baixarMidiaEvolution(messageKey: unknown, message: unknown): Promise<Buffer | null> {
+async function baixarMidiaEvolution(
+  messageKey: unknown,
+  message: unknown,
+  instance: string = EVOLUTION_INSTANCE,
+): Promise<Buffer | null> {
   try {
     const res = await fetch(
-      `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${EVOLUTION_INSTANCE}`,
+      `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instance}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
@@ -189,6 +206,7 @@ async function processarPdfJob(
   await enviarResposta(
     numero,
     `PDF recebido! Processando o orçamento de marcenaria... Isso pode levar alguns minutos. O resultado vai aparecer no PC automaticamente.`,
+    instance,
   );
 
   processarPdfMarcenaria(job.id, pdfBuffer, safeName).catch((err) => {
@@ -201,6 +219,7 @@ async function processarPdfJob(
 async function handleOwnerInterceptors(
   numero: string,
   texto: string,
+  instance: string = EVOLUTION_INSTANCE,
 ): Promise<string | null> {
   const textoNorm = texto.trim().toLowerCase();
 
@@ -428,7 +447,7 @@ OUTROS
 
     // Envia chunks intermediários diretamente e retorna o último
     for (let i = 0; i < chunks.length - 1; i++) {
-      await enviarResposta(numero, `[${nome} — parte ${i + 1}/${chunks.length}]\n\n${chunks[i]}`);
+      await enviarResposta(numero, `[${nome} — parte ${i + 1}/${chunks.length}]\n\n${chunks[i]}`, instance);
     }
     return `[${nome} — parte ${chunks.length}/${chunks.length}]\n\n${chunks[chunks.length - 1]}`;
   }
@@ -458,10 +477,15 @@ function normalizeEvent(event: unknown): string {
   return event.toLowerCase().replace(/_/g, '.');
 }
 
-function extractNumero(remoteJid: unknown): string | null {
-  if (typeof remoteJid !== 'string') return null;
-  // 5511999999999@s.whatsapp.net | 5511999999999@lid | 5511999999999
-  const match = remoteJid.match(/^(\d+)/);
+function extractNumero(key: Record<string, unknown>): string | null {
+  let jid = key.remoteJid;
+  const alt = key.remoteJidAlt;
+  // WhatsApp Business / LID: usa JID alternativo normalizado
+  if (typeof jid === 'string' && jid.endsWith('@lid') && typeof alt === 'string') {
+    jid = alt;
+  }
+  if (typeof jid !== 'string') return null;
+  const match = jid.match(/^(\d+)/);
   return match?.[1] ?? null;
 }
 
@@ -531,7 +555,7 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, ignored: 'from_me' });
     }
 
-    const numero = extractNumero(key.remoteJid);
+    const numero = extractNumero(key);
     if (!numero) {
       console.log('[webhook] remoteJid inválido:', key.remoteJid);
       return Response.json({ ok: true, ignored: 'no_number' });
@@ -540,6 +564,15 @@ export async function POST(request: Request) {
     console.log('[webhook] msg de', numero, '| instance:', body.instance ?? EVOLUTION_INSTANCE);
 
     const instance = (body.instance as string | undefined) ?? EVOLUTION_INSTANCE;
+    if (instance !== EVOLUTION_INSTANCE) {
+      console.warn(
+        '[webhook] instance webhook:',
+        instance,
+        '| EVOLUTION_INSTANCE env:',
+        EVOLUTION_INSTANCE,
+        '→ enviando pela instance do webhook',
+      );
+    }
 
     // ── Whitelist: ignora números não autorizados ──────────────────────────────
     const isOwner = OWNER_PHONE && numero === OWNER_PHONE;
@@ -551,20 +584,22 @@ export async function POST(request: Request) {
 
     console.log('[webhook] autorizado:', isOwner ? 'owner' : 'allowed');
 
+    const reply = (n: string, t: string) => enviarResposta(n, t, instance);
+
     // ── Documento PDF ──────────────────────────────────────────────────────────
     const message = data.message as Record<string, unknown> | undefined;
     const doc = message?.documentMessage as Record<string, unknown> | undefined;
     if (doc?.mimetype === 'application/pdf') {
       const filename = String(doc.fileName ?? `orcamento_${Date.now()}.pdf`);
-      const pdfBuffer = await baixarMidiaEvolution(key, message);
+      const pdfBuffer = await baixarMidiaEvolution(key, message, instance);
       if (!pdfBuffer) {
-        await enviarResposta(numero, 'Recebi o PDF mas não consegui baixá-lo. Tenta enviar novamente.');
+        await reply(numero, 'Recebi o PDF mas não consegui baixá-lo. Tenta enviar novamente.');
         return Response.json({ ok: true });
       }
 
       if (OWNER_PHONE && numero === OWNER_PHONE) {
         // Marmoraria — processa e responde diretamente no WhatsApp
-        await enviarResposta(numero, '📄 PDF recebido! Processando orçamento de marmoraria... Pode levar 1-2 minutos.');
+        await reply(numero, '📄 PDF recebido! Processando orçamento de marmoraria... Pode levar 1-2 minutos.');
         processarPdfMarmoraria(numero, pdfBuffer, filename).catch((err) => {
           console.error('[webhook] erro no processamento do PDF de marmoraria:', err);
         });
@@ -579,14 +614,14 @@ export async function POST(request: Request) {
     // ── Áudio ─────────────────────────────────────────────────────────────────
     const audio = message?.audioMessage;
     if (audio) {
-      const audioBuffer = await baixarMidiaEvolution(key, message);
+      const audioBuffer = await baixarMidiaEvolution(key, message, instance);
       if (audioBuffer) {
         const transcricao = await transcreverAudio(audioBuffer);
         if (transcricao) {
           const isOwnerAudio = OWNER_PHONE && numero === OWNER_PHONE;
           let resposta: string;
           if (isOwnerAudio) {
-            const interceptado = await handleOwnerInterceptors(numero, transcricao);
+            const interceptado = await handleOwnerInterceptors(numero, transcricao, instance);
             if (interceptado !== null) {
               resposta = interceptado;
             } else {
@@ -598,11 +633,11 @@ export async function POST(request: Request) {
           } else {
             resposta = await processarMensagem(numero, `[áudio transcrito]: ${transcricao}`);
           }
-          await enviarResposta(numero, resposta);
+          await reply(numero, resposta);
           return Response.json({ ok: true });
         }
       }
-      await enviarResposta(numero, 'Recebi um áudio mas não consegui transcrever. Pode escrever?');
+      await reply(numero, 'Recebi um áudio mas não consegui transcrever. Pode escrever?');
       return Response.json({ ok: true });
     }
 
@@ -626,13 +661,13 @@ export async function POST(request: Request) {
       if (textoNorm === '/calendar' || textoNorm === 'conectar calendar') {
         const jaConectado = await calendarConectado();
         if (jaConectado) {
-          await enviarResposta(numero, 'Google Calendar já está conectado. ✓');
+          await reply(numero, 'Google Calendar já está conectado. ✓');
         } else {
           const authUrl = getAuthUrl();
           if (authUrl) {
-            await enviarResposta(numero, `Para conectar o Google Calendar, acesse:\n\n${authUrl}`);
+            await reply(numero, `Para conectar o Google Calendar, acesse:\n\n${authUrl}`);
           } else {
-            await enviarResposta(numero, 'Google Calendar não configurado. Adicione GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local.');
+            await reply(numero, 'Google Calendar não configurado. Adicione GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no .env.local.');
           }
         }
         return Response.json({ ok: true });
@@ -640,13 +675,13 @@ export async function POST(request: Request) {
 
       // ── Menu de opções ─────────────────────────────────────────────────────
       if (MENU_REGEX.test(texto)) {
-        await enviarResposta(numero, gerarMensagemMenu());
+        await reply(numero, gerarMensagemMenu());
         return Response.json({ ok: true });
       }
 
       // ── Link do dashboard ──────────────────────────────────────────────────
       if (DASHBOARD_REGEX.test(texto)) {
-        await enviarResposta(numero, gerarLinkDashboard());
+        await reply(numero, gerarLinkDashboard());
         return Response.json({ ok: true });
       }
 
@@ -657,17 +692,17 @@ export async function POST(request: Request) {
         textoTrimmed.match(/^\/cursor\s+(.+)/is);
       if (cursorMatch) {
         const instrucao = cursorMatch[1].trim();
-        await enviarResposta(numero, '🤖 Entendido! Acionando o Cursor Agent...');
-        executarCursorAgent(instrucao, (msg) => enviarResposta(numero, msg)).catch((err) => {
+        await reply(numero, '🤖 Entendido! Acionando o Cursor Agent...');
+        executarCursorAgent(instrucao, (msg) => enviarResposta(numero, msg, instance)).catch((err) => {
           console.error('[webhook] cursor-agent background error:', err);
         });
         return Response.json({ ok: true });
       }
 
       // Interceptações hardcoded (prompt, CONFIRMAR, CANCELAR, delete_selection)
-      const interceptado = await handleOwnerInterceptors(numero, texto);
+      const interceptado = await handleOwnerInterceptors(numero, texto, instance);
       if (interceptado !== null) {
-        await enviarResposta(numero, interceptado);
+        await reply(numero, interceptado);
         return Response.json({ ok: true });
       }
 
@@ -680,7 +715,7 @@ export async function POST(request: Request) {
       await salvarMensagem(numero, 'user', texto);
       await salvarMensagem(numero, 'assistant', resposta);
 
-      await enviarResposta(numero, resposta);
+      await reply(numero, resposta);
       return Response.json({ ok: true });
     }
 
@@ -688,12 +723,12 @@ export async function POST(request: Request) {
     if (ALLOWED_PHONES.has(numero)) {
       // Menu e dashboard também disponíveis para allowed phones
       if (MENU_REGEX.test(texto)) {
-        await enviarResposta(numero, gerarMensagemMenu());
+        await reply(numero, gerarMensagemMenu());
         return Response.json({ ok: true });
       }
 
       if (DASHBOARD_REGEX.test(texto)) {
-        await enviarResposta(numero, gerarLinkDashboard());
+        await reply(numero, gerarLinkDashboard());
         return Response.json({ ok: true });
       }
 
@@ -702,7 +737,7 @@ export async function POST(request: Request) {
       const resposta = await processarComBrain(historico, texto, numero);
       await salvarMensagem(numero, 'user', texto);
       await salvarMensagem(numero, 'assistant', resposta);
-      await enviarResposta(numero, resposta);
+      await reply(numero, resposta);
       return Response.json({ ok: true });
     }
 
