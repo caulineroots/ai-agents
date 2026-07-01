@@ -71,7 +71,7 @@ const s3 = new S3Client({
 
 async function enviarResposta(numero: string, texto: string) {
   try {
-    await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+    const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,6 +79,12 @@ async function enviarResposta(numero: string, texto: string) {
       },
       body: JSON.stringify({ number: numero, text: texto }),
     });
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error('[webhook] enviarResposta falhou:', res.status, txt.slice(0, 300));
+    } else {
+      console.log('[webhook] resposta enviada para', numero, '| chars:', texto.length);
+    }
   } catch (err) {
     console.error('[webhook] erro ao enviar resposta:', err);
   }
@@ -447,31 +453,110 @@ OUTROS
 
 // ─── Handler principal ────────────────────────────────────────────────────────
 
+function normalizeEvent(event: unknown): string {
+  if (typeof event !== 'string') return '';
+  return event.toLowerCase().replace(/_/g, '.');
+}
+
+function extractNumero(remoteJid: unknown): string | null {
+  if (typeof remoteJid !== 'string') return null;
+  // 5511999999999@s.whatsapp.net | 5511999999999@lid | 5511999999999
+  const match = remoteJid.match(/^(\d+)/);
+  return match?.[1] ?? null;
+}
+
+async function parseWebhookBody(request: Request): Promise<Record<string, unknown> | null> {
+  const contentType = request.headers.get('content-type') ?? '(sem content-type)';
+  const raw = await request.text();
+
+  console.log('[webhook] POST recebido | content-type:', contentType, '| body length:', raw.length);
+  if (raw.length > 0) {
+    console.log('[webhook] body preview:', raw.slice(0, 400));
+  } else {
+    console.warn('[webhook] body vazio');
+    return null;
+  }
+
+  try {
+    let parsed: unknown = JSON.parse(raw);
+    // Algumas versões enviam data como string JSON
+    if (typeof parsed === 'string') {
+      parsed = JSON.parse(parsed);
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      console.warn('[webhook] body parseado não é objeto:', typeof parsed);
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    console.error('[webhook] JSON inválido:', err);
+    console.error('[webhook] raw (200 chars):', raw.slice(0, 200));
+    return null;
+  }
+}
+
+export async function GET() {
+  return Response.json({
+    ok: true,
+    service: 'whatsapp-webhook',
+    owner: OWNER_PHONE ? `${OWNER_PHONE.slice(0, 4)}...` : '(não configurado)',
+    allowedCount: ALLOWED_PHONES.size,
+  });
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await parseWebhookBody(request);
+    if (!body) {
+      return Response.json({ ok: false, error: 'invalid_json' }, { status: 400 });
+    }
 
-    const event = body?.event;
-    const data = body?.data;
+    const event = normalizeEvent(body.event);
+    console.log('[webhook] event:', body.event, '→ normalizado:', event);
 
-    if (event !== 'messages.upsert') return Response.json({ ok: true });
-    if (!data?.key || data.key.fromMe) return Response.json({ ok: true });
+    if (event !== 'messages.upsert') {
+      console.log('[webhook] evento ignorado:', event);
+      return Response.json({ ok: true, ignored: 'event' });
+    }
 
-    const numero = data.key.remoteJid?.replace('@s.whatsapp.net', '');
-    if (!numero) return Response.json({ ok: true });
+    const data = body.data as Record<string, unknown> | undefined;
+    if (!data?.key) {
+      console.log('[webhook] sem data.key — ignorando');
+      return Response.json({ ok: true, ignored: 'no_key' });
+    }
 
-    const instance = body?.instance ?? EVOLUTION_INSTANCE;
+    const key = data.key as Record<string, unknown>;
+    if (key.fromMe) {
+      console.log('[webhook] fromMe=true — ignorando');
+      return Response.json({ ok: true, ignored: 'from_me' });
+    }
+
+    const numero = extractNumero(key.remoteJid);
+    if (!numero) {
+      console.log('[webhook] remoteJid inválido:', key.remoteJid);
+      return Response.json({ ok: true, ignored: 'no_number' });
+    }
+
+    console.log('[webhook] msg de', numero, '| instance:', body.instance ?? EVOLUTION_INSTANCE);
+
+    const instance = (body.instance as string | undefined) ?? EVOLUTION_INSTANCE;
 
     // ── Whitelist: ignora números não autorizados ──────────────────────────────
     const isOwner = OWNER_PHONE && numero === OWNER_PHONE;
     const isAllowed = isOwner || ALLOWED_PHONES.has(numero);
-    if (!isAllowed) return Response.json({ ok: true });
+    if (!isAllowed) {
+      console.log('[webhook] número não autorizado:', numero, '| owner:', OWNER_PHONE || '(vazio)');
+      return Response.json({ ok: true, ignored: 'not_allowed' });
+    }
+
+    console.log('[webhook] autorizado:', isOwner ? 'owner' : 'allowed');
 
     // ── Documento PDF ──────────────────────────────────────────────────────────
-    const doc = data?.message?.documentMessage;
+    const message = data.message as Record<string, unknown> | undefined;
+    const doc = message?.documentMessage as Record<string, unknown> | undefined;
     if (doc?.mimetype === 'application/pdf') {
-      const filename = doc.fileName ?? `orcamento_${Date.now()}.pdf`;
-      const pdfBuffer = await baixarMidiaEvolution(data.key, data.message);
+      const filename = String(doc.fileName ?? `orcamento_${Date.now()}.pdf`);
+      const pdfBuffer = await baixarMidiaEvolution(key, message);
       if (!pdfBuffer) {
         await enviarResposta(numero, 'Recebi o PDF mas não consegui baixá-lo. Tenta enviar novamente.');
         return Response.json({ ok: true });
@@ -492,9 +577,9 @@ export async function POST(request: Request) {
     }
 
     // ── Áudio ─────────────────────────────────────────────────────────────────
-    const audio = data?.message?.audioMessage;
+    const audio = message?.audioMessage;
     if (audio) {
-      const audioBuffer = await baixarMidiaEvolution(data.key, data.message);
+      const audioBuffer = await baixarMidiaEvolution(key, message);
       if (audioBuffer) {
         const transcricao = await transcreverAudio(audioBuffer);
         if (transcricao) {
@@ -522,8 +607,18 @@ export async function POST(request: Request) {
     }
 
     // ── Texto ─────────────────────────────────────────────────────────────────
-    const texto = data?.message?.conversation || data?.message?.extendedTextMessage?.text;
-    if (!texto) return Response.json({ ok: true });
+    const extText = message?.extendedTextMessage as Record<string, unknown> | undefined;
+    const texto =
+      (typeof message?.conversation === 'string' ? message.conversation : null) ||
+      (typeof extText?.text === 'string' ? extText.text : null);
+
+    if (!texto) {
+      const msgTypes = message ? Object.keys(message).join(', ') : '(sem message)';
+      console.log('[webhook] sem texto extraível | tipos em message:', msgTypes);
+      return Response.json({ ok: true, ignored: 'no_text' });
+    }
+
+    console.log('[webhook] texto:', texto.slice(0, 80));
 
     if (isOwner) {
       // Comando especial: conectar Google Calendar
@@ -577,6 +672,7 @@ export async function POST(request: Request) {
       }
 
       // Brain mode: detecção de intenção + vault
+      console.log('[webhook] processando com Brain (owner)...');
       const historico = await carregarHistorico(numero);
       const resposta = await processarComBrain(historico, texto, numero);
 
