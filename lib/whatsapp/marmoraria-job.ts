@@ -20,15 +20,24 @@ function brl(valor: number): string {
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-async function enviarWhatsApp(phone: string, texto: string): Promise<void> {
-  try {
-    await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-      body: JSON.stringify({ number: phone, text: texto }),
-    });
-  } catch (err) {
-    console.error('[marmoraria-job] erro ao enviar WhatsApp:', err);
+async function enviarWhatsApp(phone: string, texto: string, sendTarget?: string): Promise<void> {
+  const targets = sendTarget?.includes('@lid')
+    ? [sendTarget, `${phone}@s.whatsapp.net`, phone]
+    : sendTarget
+      ? [sendTarget, `${phone}@s.whatsapp.net`, phone]
+      : [`${phone}@s.whatsapp.net`, phone];
+
+  for (const t of [...new Set(targets)]) {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ number: t, text: texto }),
+      });
+      if (res.ok) return;
+    } catch (err) {
+      console.error('[marmoraria-job] erro ao enviar WhatsApp | target:', t, err);
+    }
   }
 }
 
@@ -129,6 +138,7 @@ export async function processarPdfMarmoraria(
   phone: string,
   pdfBuffer: Buffer,
   filename: string,
+  sendTarget?: string,
 ): Promise<void> {
   try {
     console.log(`[marmoraria-job] iniciando processamento para ${phone} — ${filename}`);
@@ -142,6 +152,7 @@ export async function processarPdfMarmoraria(
       await enviarWhatsApp(
         phone,
         `Processamento concluído com erro ao interpretar o PDF.\nDetalhe: ${parseError.slice(0, 300)}\n\nTente enviar o PDF novamente.`,
+        sendTarget,
       );
       return;
     }
@@ -150,6 +161,7 @@ export async function processarPdfMarmoraria(
       await enviarWhatsApp(
         phone,
         'Não consegui extrair itens do PDF. Verifique se é um projeto de marmoraria com medidas e tente novamente.',
+        sendTarget,
       );
       return;
     }
@@ -157,10 +169,10 @@ export async function processarPdfMarmoraria(
     const projeto = folha?.projeto ?? 'Projeto';
     const mensagem = formatarResultado(resultado, projeto);
 
-    await enviarWhatsApp(phone, mensagem);
+    await enviarWhatsApp(phone, mensagem, sendTarget);
 
     if (parseError) {
-      await enviarWhatsApp(phone, `⚠️ Aviso: alguns dados podem estar incompletos.\n${parseError.slice(0, 200)}`);
+      await enviarWhatsApp(phone, `⚠️ Aviso: alguns dados podem estar incompletos.\n${parseError.slice(0, 200)}`, sendTarget);
     }
 
     console.log(`[marmoraria-job] resultado enviado para ${phone} — ${resultado.itens.length} item(ns), total ${resultado.totalGeral}`);
@@ -170,6 +182,7 @@ export async function processarPdfMarmoraria(
     await enviarWhatsApp(
       phone,
       `Ocorreu um erro ao processar o PDF de marmoraria.\nDetalhe: ${msg.slice(0, 200)}\n\nTente novamente em alguns instantes.`,
+      sendTarget,
     );
   }
 }
