@@ -91,6 +91,57 @@ function normalizeLidJid(jid: string): string {
   return jid.replace(/:\d+@lid$/, '@lid');
 }
 
+function loadLidOverrides(): Map<string, string> {
+  const map = new Map<string, string>();
+  const raw = process.env.WHATSAPP_LID_OVERRIDES ?? '';
+  for (const part of raw.split(/[,;]/)) {
+    const [phone, jid] = part.split('=').map((s) => s.trim());
+    if (phone && jid?.includes('@lid')) map.set(phone, normalizeLidJid(jid));
+  }
+  return map;
+}
+
+const lidOverrides = loadLidOverrides();
+
+function extractLidFromObject(obj: unknown, phone: string): string | null {
+  if (!obj || typeof obj !== 'object') return null;
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = extractLidFromObject(item, phone);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const record = obj as Record<string, unknown>;
+  const remoteJid = record.remoteJid;
+  const remoteJidAlt = record.remoteJidAlt;
+
+  if (typeof remoteJid === 'string' && remoteJid.includes('@lid')) {
+    const alt = typeof remoteJidAlt === 'string' ? remoteJidAlt : '';
+    if (alt.includes(phone) || remoteJid.includes(phone)) {
+      return normalizeLidJid(remoteJid);
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    const found = extractLidFromObject(value, phone);
+    if (found) return found;
+  }
+  return null;
+}
+
+function parseWhatsappNumbersItems(json: unknown): Record<string, unknown>[] {
+  if (Array.isArray(json)) return json as Record<string, unknown>[];
+  if (json && typeof json === 'object') {
+    const obj = json as Record<string, unknown>;
+    for (const key of ['numbers', 'data', 'result']) {
+      if (Array.isArray(obj[key])) return obj[key] as Record<string, unknown>[];
+    }
+  }
+  return [];
+}
+
 async function fetchLidJidViaNumbers(instance: string, phone: string): Promise<string | null> {
   try {
     const res = await fetch(`${EVOLUTION_API_URL}/chat/whatsappNumbers/${instance}`, {
@@ -98,21 +149,69 @@ async function fetchLidJidViaNumbers(instance: string, phone: string): Promise<s
       headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
       body: JSON.stringify({ numbers: [phone] }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[webhook] whatsappNumbers status:', res.status);
+      return null;
+    }
 
     const json = await res.json();
-    const items = (Array.isArray(json) ? json : []) as Record<string, unknown>[];
+    const items = parseWhatsappNumbersItems(json);
+
     for (const item of items) {
-      const lid = item.lid ?? item.jid;
-      if (typeof lid === 'string' && lid.includes('@lid')) {
-        const normalized = normalizeLidJid(lid);
+      const jid = typeof item.jid === 'string' ? item.jid : null;
+      // lid field is a flag ("lid"), not the JID — real @lid is in jid when cached
+      if (jid?.includes('@lid')) {
+        const normalized = normalizeLidJid(jid);
         lidJidCache.set(phone, normalized);
         console.log('[webhook] LID resolvido via whatsappNumbers:', phone, '→', normalized);
         return normalized;
       }
+      if (item.lid === 'lid') {
+        console.log('[webhook] whatsappNumbers: contato LID mas jid=', jid, '| number=', item.number);
+      }
     }
   } catch (err) {
     console.warn('[webhook] whatsappNumbers erro:', err);
+  }
+  return null;
+}
+
+async function fetchLidJidViaMessages(instance: string, phone: string): Promise<string | null> {
+  const altTargets = [`${phone}@s.whatsapp.net`, phone];
+  for (const alt of altTargets) {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${instance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({
+          where: { key: { remoteJidAlt: alt } },
+          page: 1,
+          offset: 10,
+        }),
+      });
+      if (!res.ok) {
+        console.warn('[webhook] findMessages status:', res.status, '| alt:', alt);
+        continue;
+      }
+
+      const json = await res.json();
+      const messages = (Array.isArray(json)
+        ? json
+        : (json as { messages?: unknown[] }).messages ?? []) as Record<string, unknown>[];
+
+      for (const msg of messages) {
+        const key = msg.key as Record<string, unknown> | undefined;
+        const remoteJid = key?.remoteJid;
+        if (typeof remoteJid === 'string' && remoteJid.includes('@lid')) {
+          const lid = normalizeLidJid(remoteJid);
+          lidJidCache.set(phone, lid);
+          console.log('[webhook] LID resolvido via findMessages:', phone, '→', lid);
+          return lid;
+        }
+      }
+    } catch (err) {
+      console.warn('[webhook] findMessages erro | alt:', alt, err);
+    }
   }
   return null;
 }
@@ -135,36 +234,14 @@ async function fetchLidJidViaChats(instance: string, phone: string): Promise<str
       unknown
     >[];
 
-    for (const chat of chats) {
-      const candidates = [
-        chat.id,
-        chat.remoteJid,
-        (chat.lastMessage as Record<string, unknown> | undefined)?.key
-          ? ((chat.lastMessage as Record<string, unknown>).key as Record<string, unknown>).remoteJid
-          : undefined,
-      ].filter((v): v is string => typeof v === 'string');
-
-      for (const raw of candidates) {
-        if (!raw.includes('@lid')) continue;
-        const lid = normalizeLidJid(raw);
-        const alt = String(chat.remoteJidAlt ?? '');
-        const pnJid = String(chat.remoteJid ?? '');
-        if (alt.includes(phone) || pnJid.includes(phone) || raw.includes(phone)) {
-          lidJidCache.set(phone, lid);
-          console.log('[webhook] LID resolvido via findChats:', phone, '→', lid);
-          return lid;
-        }
-      }
-    }
+    console.log('[webhook] findChats retornou', chats.length, 'chats para phone', phone);
 
     for (const chat of chats) {
-      const alt = String(chat.remoteJidAlt ?? '');
-      const id = String(chat.id ?? chat.remoteJid ?? '');
-      if (alt.includes(phone) && id.includes('@lid')) {
-        const lid = normalizeLidJid(id);
-        lidJidCache.set(phone, lid);
-        console.log('[webhook] LID resolvido (alt):', phone, '→', lid);
-        return lid;
+      const fromPayload = extractLidFromObject(chat, phone);
+      if (fromPayload) {
+        lidJidCache.set(phone, fromPayload);
+        console.log('[webhook] LID resolvido via findChats:', phone, '→', fromPayload);
+        return fromPayload;
       }
     }
   } catch (err) {
@@ -173,12 +250,35 @@ async function fetchLidJidViaChats(instance: string, phone: string): Promise<str
   return null;
 }
 
-async function fetchLidJid(instance: string, phone: string): Promise<string | null> {
+async function fetchLidJid(
+  instance: string,
+  phone: string,
+  webhookData?: Record<string, unknown>,
+): Promise<string | null> {
   const cached = lidJidCache.get(phone);
   if (cached) return cached;
 
+  const override = lidOverrides.get(phone);
+  if (override) {
+    lidJidCache.set(phone, override);
+    console.log('[webhook] LID via WHATSAPP_LID_OVERRIDES:', phone, '→', override);
+    return override;
+  }
+
+  if (webhookData) {
+    const fromWebhook = extractLidFromObject(webhookData, phone);
+    if (fromWebhook) {
+      lidJidCache.set(phone, fromWebhook);
+      console.log('[webhook] LID extraído do webhook payload:', phone, '→', fromWebhook);
+      return fromWebhook;
+    }
+  }
+
   const viaNumbers = await fetchLidJidViaNumbers(instance, phone);
   if (viaNumbers) return viaNumbers;
+
+  const viaMessages = await fetchLidJidViaMessages(instance, phone);
+  if (viaMessages) return viaMessages;
 
   return fetchLidJidViaChats(instance, phone);
 }
@@ -187,6 +287,7 @@ async function resolveSendTarget(
   key: Record<string, unknown>,
   numero: string,
   instance: string,
+  webhookData?: Record<string, unknown>,
 ): Promise<string> {
   for (const field of [key.remoteJid, key.remoteJidAlt, key.participant]) {
     if (typeof field === 'string' && field.endsWith('@lid')) {
@@ -198,8 +299,11 @@ async function resolveSendTarget(
 
   // Modo LID: sendText precisa do @lid, não do @s.whatsapp.net (senão erro 463)
   if (key.addressingMode === 'lid') {
-    const lid = await fetchLidJid(instance, numero);
+    const lid = await fetchLidJid(instance, numero, webhookData);
     if (lid) return lid;
+    console.error('[webhook] LID não resolvido para', numero, '| addressingMode: lid');
+    // Não retorna @s.whatsapp.net — enviarResposta tentará fallbacks
+    return numero;
   }
 
   const jid = key.remoteJidAlt ?? key.remoteJid;
@@ -759,7 +863,7 @@ export async function POST(request: Request) {
 
     console.log('[webhook] autorizado:', isOwner ? 'owner' : 'allowed');
 
-    const sendTarget = await resolveSendTarget(key, numero, instance);
+    const sendTarget = await resolveSendTarget(key, numero, instance, data);
     console.log('[webhook] sendTarget:', sendTarget, '| addressingMode:', key.addressingMode ?? 'n/a');
 
     const reply = (n: string, t: string) => enviarResposta(n, t, instance, sendTarget, key);
