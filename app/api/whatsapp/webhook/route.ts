@@ -321,25 +321,32 @@ async function enviarResposta(
   quotedKey?: Record<string, unknown>,
 ): Promise<boolean> {
   const url = `${EVOLUTION_API_URL}/message/sendText/${instance}`;
+  const isLidMode =
+    sendTarget?.includes('@lid') || quotedKey?.addressingMode === 'lid';
 
   const targets: string[] = [];
   if (sendTarget?.includes('@lid')) targets.push(sendTarget);
   if (sendTarget && !targets.includes(sendTarget)) targets.push(sendTarget);
-  targets.push(`${numero}@s.whatsapp.net`, numero);
+  if (!isLidMode) {
+    targets.push(`${numero}@s.whatsapp.net`, numero);
+  }
 
   for (const t of [...new Set(targets)]) {
     try {
       console.log('[webhook] enviando | instance:', instance, '| target:', t, '| chars:', texto.length);
 
-      const quotedJid =
-        typeof quotedKey?.remoteJid === 'string' && quotedKey.remoteJid.includes('@lid')
-          ? normalizeLidJid(quotedKey.remoteJid)
-          : t.includes('@lid')
-            ? t
-            : `${numero}@s.whatsapp.net`;
+      const payload: Record<string, unknown> = {
+        number: t,
+        text: texto,
+        linkPreview: false,
+      };
 
-      const payload: Record<string, unknown> = { number: t, text: texto };
-      if (quotedKey?.id) {
+      // Quote quebra entrega no modo LID (vira extendedTextMessage → erro 463)
+      if (quotedKey?.id && !isLidMode) {
+        const quotedJid =
+          typeof quotedKey.remoteJid === 'string' && quotedKey.remoteJid.includes('@')
+            ? quotedKey.remoteJid
+            : `${numero}@s.whatsapp.net`;
         payload.quoted = {
           key: {
             remoteJid: quotedJid,
@@ -347,6 +354,8 @@ async function enviarResposta(
             id: quotedKey.id,
           },
         };
+      } else if (isLidMode) {
+        console.log('[webhook] LID mode: enviando sem quoted');
       }
 
       const res = await fetch(url, {
