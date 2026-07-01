@@ -69,38 +69,83 @@ const s3 = new S3Client({
   },
 });
 
+// Dedupe: Evolution dispara vários upserts por msg (msg + DELIVERY_ACK)
+const processedMessageIds = new Map<string, number>();
+const DEDUPE_TTL_MS = 10 * 60 * 1000;
+
+function isDuplicateMessage(messageId: string): boolean {
+  const now = Date.now();
+  for (const [id, ts] of processedMessageIds) {
+    if (now - ts > DEDUPE_TTL_MS) processedMessageIds.delete(id);
+  }
+  if (processedMessageIds.has(messageId)) return true;
+  processedMessageIds.set(messageId, now);
+  return false;
+}
+
+function resolveSendTarget(key: Record<string, unknown>, numero: string): string {
+  const jid = key.remoteJidAlt ?? key.remoteJid;
+  if (typeof jid === 'string' && jid.includes('@')) {
+    // Modo LID / multi-device: Evolution precisa do JID completo, não só dígitos
+    if (key.addressingMode === 'lid' || jid.endsWith('@lid')) {
+      return jid;
+    }
+  }
+  return numero;
+}
+
 async function enviarResposta(
   numero: string,
   texto: string,
   instance: string = EVOLUTION_INSTANCE,
+  sendTarget?: string,
+  quotedKey?: Record<string, unknown>,
 ): Promise<boolean> {
-  try {
-    const url = `${EVOLUTION_API_URL}/message/sendText/${instance}`;
-    console.log('[webhook] enviando | instance:', instance, '| numero:', numero, '| chars:', texto.length);
+  const target = sendTarget ?? numero;
+  const url = `${EVOLUTION_API_URL}/message/sendText/${instance}`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: EVOLUTION_API_KEY,
-      },
-      body: JSON.stringify({ number: numero, text: texto }),
-    });
+  const targets = target.includes('@')
+    ? [target, `${numero}@s.whatsapp.net`, numero]
+    : [numero, `${numero}@s.whatsapp.net`];
 
-    const responseText = await res.text();
-    console.log('[webhook] evolution resposta:', res.status, responseText.slice(0, 400));
+  for (const t of [...new Set(targets)]) {
+    try {
+      console.log('[webhook] enviando | instance:', instance, '| target:', t, '| chars:', texto.length);
 
-    if (!res.ok) {
-      console.error('[webhook] enviarResposta FALHOU | instance:', instance, '| status:', res.status);
-      return false;
+      const payload: Record<string, unknown> = { number: t, text: texto };
+      if (quotedKey?.id) {
+        payload.quoted = {
+          key: {
+            remoteJid: quotedKey.remoteJid ?? `${numero}@s.whatsapp.net`,
+            fromMe: false,
+            id: quotedKey.id,
+          },
+        };
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responseText = await res.text();
+      console.log('[webhook] evolution resposta:', res.status, '| target:', t, '| body:', responseText.slice(0, 300));
+
+      if (res.ok) {
+        console.log('[webhook] resposta enviada OK | target:', t);
+        return true;
+      }
+    } catch (err) {
+      console.error('[webhook] erro ao enviar resposta | target:', t, err);
     }
-
-    console.log('[webhook] resposta enviada OK para', numero);
-    return true;
-  } catch (err) {
-    console.error('[webhook] erro ao enviar resposta:', err);
-    return false;
   }
+
+  console.error('[webhook] enviarResposta FALHOU em todos os formatos | numero:', numero);
+  return false;
 }
 
 async function baixarMidiaEvolution(
@@ -555,6 +600,12 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, ignored: 'from_me' });
     }
 
+    const messageId = typeof key.id === 'string' ? key.id : '';
+    if (messageId && isDuplicateMessage(messageId)) {
+      console.log('[webhook] msg duplicada ignorada | id:', messageId);
+      return Response.json({ ok: true, ignored: 'duplicate' });
+    }
+
     const numero = extractNumero(key);
     if (!numero) {
       console.log('[webhook] remoteJid inválido:', key.remoteJid);
@@ -584,7 +635,10 @@ export async function POST(request: Request) {
 
     console.log('[webhook] autorizado:', isOwner ? 'owner' : 'allowed');
 
-    const reply = (n: string, t: string) => enviarResposta(n, t, instance);
+    const sendTarget = resolveSendTarget(key, numero);
+    console.log('[webhook] sendTarget:', sendTarget, '| addressingMode:', key.addressingMode ?? 'n/a');
+
+    const reply = (n: string, t: string) => enviarResposta(n, t, instance, sendTarget, key);
 
     // ── Documento PDF ──────────────────────────────────────────────────────────
     const message = data.message as Record<string, unknown> | undefined;
@@ -693,7 +747,7 @@ export async function POST(request: Request) {
       if (cursorMatch) {
         const instrucao = cursorMatch[1].trim();
         await reply(numero, '🤖 Entendido! Acionando o Cursor Agent...');
-        executarCursorAgent(instrucao, (msg) => enviarResposta(numero, msg, instance)).catch((err) => {
+        executarCursorAgent(instrucao, (msg) => enviarResposta(numero, msg, instance, sendTarget, key)).catch((err) => {
           console.error('[webhook] cursor-agent background error:', err);
         });
         return Response.json({ ok: true });
